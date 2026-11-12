@@ -1,6 +1,15 @@
 "use client";
 
 import { useState } from "react";
+import { toast } from "sonner";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 
 type Settings = {
   opening_time: string | null;
@@ -24,7 +33,7 @@ export function OperatingHoursForm({ initialSettings }: { initialSettings: Setti
   const [closing, setClosing] = useState(initialSettings?.closing_time?.slice(0, 5) ?? "");
   const [reason, setReason] = useState("STOCK_OUT");
   const [other, setOther] = useState("");
-  const [message, setMessage] = useState("");
+  const [confirmation, setConfirmation] = useState<{ path: string; body?: unknown; message: string } | null>(null);
 
   async function load() {
     const response = await fetch("/api/v1/admin/settings/operating-hours", { cache: "no-store" });
@@ -36,49 +45,96 @@ export function OperatingHoursForm({ initialSettings }: { initialSettings: Setti
     setClosing(data.closing_time?.slice(0, 5) ?? "");
   }
 
-  async function submit(path: string, body?: unknown, confirmMessage?: string) {
-    if (confirmMessage && !window.confirm(confirmMessage)) return;
-    setMessage("");
-    const response = await fetch(path, {
-      method: path.endsWith("operating-hours") ? "PUT" : "POST",
-      headers: { "Content-Type": "application/json" },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
-    const result = await response.json();
-    setMessage(result.message ?? (response.ok ? "Berhasil." : "Terjadi kesalahan."));
-    if (response.ok) await load();
+  async function send(path: string, body?: unknown) {
+    try {
+      const response = await fetch(path, {
+        method: path.endsWith("operating-hours") ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        toast.error(result.message ?? "Terjadi kesalahan.");
+        return;
+      }
+      toast.success(result.message ?? "Berhasil.");
+      await load();
+    } catch {
+      toast.error("Terjadi kesalahan saat menghubungi server.");
+    }
+  }
+
+  function requestSubmit(path: string, body?: unknown, confirmMessage?: string) {
+    if (confirmMessage) {
+      setConfirmation({ path, body, message: confirmMessage });
+      return;
+    }
+    void send(path, body);
   }
 
   return (
-    <div className="mt-6 grid max-w-3xl gap-6 lg:grid-cols-2">
-      <section className="rounded-xl border border-neutral-200 bg-white p-5">
-        <h2 className="font-semibold">Jadwal harian</h2>
-        <p className="mt-1 text-sm text-neutral-600">Jam ini berlaku sama untuk setiap hari. Mendukung jadwal melewati tengah malam.</p>
-        <form className="mt-5 space-y-4" onSubmit={(event) => { event.preventDefault(); void submit("/api/v1/admin/settings/operating-hours", { openingTime: opening, closingTime: closing }); }}>
-          <label className="block text-sm">Jam buka<input type="time" required value={opening} onChange={(event) => setOpening(event.target.value)} className="mt-1 block rounded-md border border-neutral-300 px-3 py-2" /></label>
-          <label className="block text-sm">Jam tutup<input type="time" required value={closing} onChange={(event) => setClosing(event.target.value)} className="mt-1 block rounded-md border border-neutral-300 px-3 py-2" /></label>
-          <button className="rounded-md bg-neutral-900 px-4 py-2 text-sm text-white">Simpan jadwal</button>
-        </form>
-        <p className="mt-4 text-sm">Status: {settings?.operatingStatus.status ?? "Memuat…"}</p>
-        {settings?.operatingStatus.nextOpeningAt && <p className="text-sm text-neutral-600">Buka kembali: {new Date(settings.operatingStatus.nextOpeningAt).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })} WIB</p>}
-      </section>
-
-      <section className="rounded-xl border border-neutral-200 bg-white p-5">
-        <h2 className="font-semibold">Tutup sementara</h2>
-        {settings?.operatingStatus.status === "TEMPORARILY_CLOSED" ? (
-          <>
-            <p className="mt-2 text-sm text-neutral-600">Alasan: {settings.temporary_close_reason === "OTHER" ? settings.temporary_close_other : reasons.find(([key]) => key === settings.temporary_close_reason)?.[1]}</p>
-            <button onClick={() => void submit("/api/v1/admin/restaurant/reopen", undefined, "Buka kembali restoran?")} className="mt-5 rounded-md bg-neutral-900 px-4 py-2 text-sm text-white">Buka kembali</button>
-          </>
-        ) : (
-          <form className="mt-5 space-y-4" onSubmit={(event) => { event.preventDefault(); void submit("/api/v1/admin/restaurant/temporary-close", { reason, otherReason: other }, "Tutup restoran sementara?"); }}>
-            <label className="block text-sm">Alasan<select value={reason} onChange={(event) => setReason(event.target.value)} className="mt-1 block rounded-md border border-neutral-300 px-3 py-2">{reasons.map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
-            {reason === "OTHER" && <label className="block text-sm">Keterangan<textarea required maxLength={500} value={other} onChange={(event) => setOther(event.target.value)} className="mt-1 block w-full rounded-md border border-neutral-300 px-3 py-2" /></label>}
-            <button className="rounded-md border border-red-300 px-4 py-2 text-sm text-red-800">Tutup sementara</button>
+    <div className="mt-6 grid max-w-4xl gap-6 lg:grid-cols-2">
+      <Card>
+        <CardHeader>
+          <CardTitle>Jadwal harian</CardTitle>
+          <p className="text-sm text-muted-foreground">Jam ini berlaku sama untuk setiap hari. Mendukung jadwal melewati tengah malam.</p>
+        </CardHeader>
+        <CardContent>
+          <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); requestSubmit("/api/v1/admin/settings/operating-hours", { openingTime: opening, closingTime: closing }); }}>
+            <div className="space-y-2"><Label htmlFor="opening-time">Jam buka</Label><Input id="opening-time" type="time" required value={opening} onChange={(event) => setOpening(event.target.value)} /></div>
+            <div className="space-y-2"><Label htmlFor="closing-time">Jam tutup</Label><Input id="closing-time" type="time" required value={closing} onChange={(event) => setClosing(event.target.value)} /></div>
+            <Button type="submit">Simpan jadwal</Button>
           </form>
-        )}
-      </section>
-      {message && <p role="status" className="text-sm text-neutral-700 lg:col-span-2">{message}</p>}
+          <div className="mt-5 flex flex-wrap items-center gap-2 text-sm">
+            <span className="text-muted-foreground">Status restoran</span>
+            <Badge className={settings?.operatingStatus.status === "OPEN" ? "border-transparent bg-success-soft text-success" : settings?.operatingStatus.status === "TEMPORARILY_CLOSED" ? "border-transparent bg-warning-soft text-warning" : ""}>
+              {settings?.operatingStatus.status ?? "Memuat…"}
+            </Badge>
+          </div>
+          {settings?.operatingStatus.nextOpeningAt && <p className="mt-2 text-sm text-muted-foreground">Buka kembali: {new Date(settings.operatingStatus.nextOpeningAt).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })} WIB</p>}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Tutup sementara</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {settings?.operatingStatus.status === "TEMPORARILY_CLOSED" ? (
+            <>
+              <p className="text-sm text-muted-foreground">Alasan: {settings.temporary_close_reason === "OTHER" ? settings.temporary_close_other : reasons.find(([key]) => key === settings.temporary_close_reason)?.[1]}</p>
+              <Button onClick={() => requestSubmit("/api/v1/admin/restaurant/reopen", undefined, "Buka kembali restoran?")} className="mt-5">Buka kembali</Button>
+            </>
+          ) : (
+            <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); requestSubmit("/api/v1/admin/restaurant/temporary-close", { reason, otherReason: other }, "Tutup restoran sementara?"); }}>
+              <div className="space-y-2"><Label htmlFor="close-reason">Alasan</Label><Select value={reason} onValueChange={setReason}><SelectTrigger id="close-reason"><SelectValue placeholder="Pilih alasan" /></SelectTrigger><SelectContent>{reasons.map(([key, label]) => <SelectItem key={key} value={key}>{label}</SelectItem>)}</SelectContent></Select></div>
+              {reason === "OTHER" && <div className="space-y-2"><Label htmlFor="close-other">Keterangan</Label><Textarea id="close-other" required maxLength={500} value={other} onChange={(event) => setOther(event.target.value)} /></div>}
+              <Button type="submit" variant="destructive">Tutup sementara</Button>
+            </form>
+          )}
+        </CardContent>
+      </Card>
+      <AlertDialog open={confirmation !== null} onOpenChange={(open) => { if (!open) setConfirmation(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Konfirmasi tindakan</AlertDialogTitle>
+            <AlertDialogDescription>{confirmation?.message}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Batal</AlertDialogCancel>
+            <AlertDialogAction
+              variant={confirmation?.path.endsWith("temporary-close") ? "destructive" : "default"}
+              onClick={() => {
+                const action = confirmation;
+                setConfirmation(null);
+                if (action) void send(action.path, action.body);
+              }}
+            >
+              {confirmation?.path.endsWith("reopen") ? "Buka kembali" : "Tutup sementara"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

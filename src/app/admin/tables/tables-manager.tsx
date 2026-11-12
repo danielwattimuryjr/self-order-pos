@@ -1,13 +1,23 @@
 "use client";
 
 import { useState } from "react";
+import { toast } from "sonner";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 type DiningTable = { id: string; table_code: string; table_number: number; is_active: boolean };
 
 export function TablesManager({ initialTables }: { initialTables: DiningTable[] }) {
   const [tables, setTables] = useState<DiningTable[]>(initialTables);
   const [number, setNumber] = useState("");
-  const [message, setMessage] = useState("");
+  const [editingTable, setEditingTable] = useState<DiningTable | null>(null);
+  const [editingNumber, setEditingNumber] = useState("");
+  const [tableToDeactivate, setTableToDeactivate] = useState<DiningTable | null>(null);
 
   async function load() {
     const response = await fetch("/api/v1/admin/tables", { cache: "no-store" });
@@ -17,41 +27,125 @@ export function TablesManager({ initialTables }: { initialTables: DiningTable[] 
   }
 
   async function mutate(url: string, method: string, body?: unknown) {
-    const response = await fetch(url, {
-      method,
-      headers: { "Content-Type": "application/json" },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
-    const result = await response.json();
-    setMessage(result.message ?? "Terjadi kesalahan.");
-    if (response.ok) await load();
+    try {
+      const response = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        toast.error(result.message ?? "Terjadi kesalahan.");
+        return false;
+      }
+      toast.success(result.message ?? "Berhasil.");
+      await load();
+      return true;
+    } catch {
+      toast.error("Terjadi kesalahan saat menghubungi server.");
+      return false;
+    }
+  }
+
+  async function addTable(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (await mutate("/api/v1/admin/tables", "POST", { tableNumber: Number(number) })) setNumber("");
+  }
+
+  async function saveTableNumber(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingTable) return;
+    const saved = await mutate(`/api/v1/admin/tables/${editingTable.id}`, "PATCH", { tableNumber: Number(editingNumber) });
+    if (saved) setEditingTable(null);
   }
 
   return (
-    <div className="mt-6">
-      <form className="flex flex-wrap items-end gap-3" onSubmit={(event) => { event.preventDefault(); void mutate("/api/v1/admin/tables", "POST", { tableNumber: Number(number) }); setNumber(""); }}>
-        <label className="text-sm">Nomor meja<input type="number" min="1" required value={number} onChange={(event) => setNumber(event.target.value)} className="mt-1 block rounded-md border border-neutral-300 px-3 py-2" /></label>
-        <button className="rounded-md bg-neutral-900 px-4 py-2 text-sm text-white">Tambah meja</button>
-        <button type="button" onClick={() => window.open("/api/v1/admin/tables/qr-pdf", "_blank", "noopener,noreferrer")} className="rounded-md border border-neutral-300 px-4 py-2 text-sm">Unduh semua QR (PDF)</button>
+    <div className="mt-6 space-y-4">
+      <form className="flex flex-wrap items-end gap-3" onSubmit={addTable}>
+        <div className="w-full max-w-xs space-y-2">
+          <Label htmlFor="new-table-number">Nomor meja</Label>
+          <Input id="new-table-number" type="number" min="1" required value={number} onChange={(event) => setNumber(event.target.value)} />
+        </div>
+        <Button type="submit">Tambah meja</Button>
+        <Button type="button" variant="outline" onClick={() => window.open("/api/v1/admin/tables/qr-pdf", "_blank", "noopener,noreferrer")}>Unduh semua QR (PDF)</Button>
       </form>
-      {message && <p role="status" className="mt-4 text-sm">{message}</p>}
-      <div className="mt-6 overflow-x-auto rounded-xl border border-neutral-200 bg-white">
-        <table className="w-full min-w-[640px] text-left text-sm">
-          <thead className="border-b border-neutral-200 bg-neutral-50"><tr><th className="p-3">Meja</th><th className="p-3">Kode QR (UUIDv4)</th><th className="p-3">Status</th><th className="p-3">Tindakan</th></tr></thead>
-          <tbody>{tables.map((table) => <tr key={table.id} className="border-b last:border-0">
-            <td className="p-3">Meja {String(table.table_number).padStart(2, "0")}</td>
-            <td className="p-3 font-mono text-xs">{table.table_code}</td>
-            <td className="p-3">{table.is_active ? "Aktif" : "Nonaktif"}</td>
-            <td className="flex flex-wrap gap-2 p-3">
-              {table.is_active ? <>
-                <button onClick={() => { const next = window.prompt("Nomor meja baru", String(table.table_number)); if (next && Number(next) !== table.table_number) void mutate(`/api/v1/admin/tables/${table.id}`, "PATCH", { tableNumber: Number(next) }); }} className="underline">Ubah nomor</button>
-                <button onClick={() => { if (window.confirm("Nonaktifkan meja ini? QR tidak akan dapat memulai sesi baru.")) void mutate(`/api/v1/admin/tables/${table.id}`, "DELETE"); }} className="text-red-700 underline">Nonaktifkan</button>
-                <button onClick={() => window.open(`/api/v1/admin/tables/${table.id}/qr`, "_blank", "noopener,noreferrer")} className="underline">Unduh QR</button>
-              </> : <button onClick={() => void mutate(`/api/v1/admin/tables/${table.id}`, "PATCH", { isActive: true })} className="underline">Aktifkan</button>}
-            </td>
-          </tr>)}</tbody>
-        </table>
-      </div>
+
+      <Card className="overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[640px] text-left text-sm">
+            <thead className="border-b bg-secondary/60">
+              <tr>
+                <th scope="col" className="px-4 py-3 font-medium">Meja</th>
+                <th scope="col" className="px-4 py-3 font-medium">Kode QR (UUIDv4)</th>
+                <th scope="col" className="px-4 py-3 font-medium">Status</th>
+                <th scope="col" className="px-4 py-3 font-medium">Tindakan</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tables.map((table) => (
+                <tr key={table.id} className="border-b last:border-0">
+                  <td className="px-4 py-3 font-medium">Meja {String(table.table_number).padStart(2, "0")}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{table.table_code}</td>
+                  <td className="px-4 py-3">
+                    <Badge className={table.is_active ? "border-transparent bg-success-soft text-success" : "border-border bg-transparent text-muted-foreground"}>
+                      {table.is_active ? "Aktif" : "Nonaktif"}
+                    </Badge>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-wrap gap-1">
+                      {table.is_active ? <>
+                        <Button size="sm" variant="ghost" onClick={() => { setEditingTable(table); setEditingNumber(String(table.table_number)); }}>Ubah nomor</Button>
+                        <Button size="sm" variant="destructive" onClick={() => setTableToDeactivate(table)}>Nonaktifkan</Button>
+                        <Button size="sm" variant="ghost" onClick={() => window.open(`/api/v1/admin/tables/${table.id}/qr`, "_blank", "noopener,noreferrer")}>Unduh QR</Button>
+                      </> : <Button size="sm" variant="outline" onClick={() => void mutate(`/api/v1/admin/tables/${table.id}`, "PATCH", { isActive: true })}>Aktifkan</Button>}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {tables.length === 0 && <tr><td colSpan={4} className="px-4 py-10 text-center text-muted-foreground">Belum ada meja.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      <Dialog open={editingTable !== null} onOpenChange={(open) => { if (!open) setEditingTable(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Ubah nomor meja</DialogTitle>
+            <DialogDescription>Kode QR tetap sama setelah nomor meja diubah.</DialogDescription>
+          </DialogHeader>
+          <form id="edit-table-form" className="space-y-2" onSubmit={saveTableNumber}>
+            <Label htmlFor="edit-table-number">Nomor meja</Label>
+            <Input id="edit-table-number" type="number" min="1" required value={editingNumber} onChange={(event) => setEditingNumber(event.target.value)} />
+          </form>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setEditingTable(null)}>Batal</Button>
+            <Button type="submit" form="edit-table-form">Simpan</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={tableToDeactivate !== null} onOpenChange={(open) => { if (!open) setTableToDeactivate(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Nonaktifkan meja?</AlertDialogTitle>
+            <AlertDialogDescription>QR meja {tableToDeactivate?.table_number} tidak akan dapat memulai sesi baru.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Batal</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                const table = tableToDeactivate;
+                setTableToDeactivate(null);
+                if (table) void mutate(`/api/v1/admin/tables/${table.id}`, "DELETE");
+              }}
+            >
+              Nonaktifkan
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
