@@ -19,6 +19,7 @@ export default async function AdminLayout({ children }: Readonly<{ children: Rea
           <Link href="/admin/settings" className="block rounded-md px-3 py-2 text-sm hover:bg-neutral-100">Jam Operasional</Link>
           <Link href="/admin/catalog" className="block rounded-md px-3 py-2 text-sm hover:bg-neutral-100">Kategori &amp; Menu</Link>
           <Link href="/admin/templates" className="block rounded-md px-3 py-2 text-sm hover:bg-neutral-100">Template Menu</Link>
+          <Link href="/admin/design-system" className="block rounded-md px-3 py-2 text-sm hover:bg-neutral-100">Design System</Link>
           {upcoming.map((item) => <span key={item} aria-disabled="true" className="block cursor-not-allowed px-3 py-2 text-sm text-neutral-400">{item}</span>)}
         </nav>
         <form action={signOut} className="mt-7"><button className="text-sm text-neutral-600 underline">Keluar</button></form>
