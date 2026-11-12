@@ -6,8 +6,11 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import type { MenuConfiguration } from "@/lib/catalog/built-in-templates";
 
 type Category = { id: string; name: string; sort_order: number; is_active: boolean; menuCount?: number };
@@ -28,6 +31,10 @@ export function CatalogManager() {
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [categoryToDelete, setCategoryToDelete] = useState<Category | null>(null);
+  const [menuToDelete, setMenuToDelete] = useState<Menu | null>(null);
+  const [applyTemplateConfirmation, setApplyTemplateConfirmation] = useState(false);
+  const [saveTemplateDialogOpen, setSaveTemplateDialogOpen] = useState(false);
+  const [templateName, setTemplateName] = useState("");
   const [draft, setDraft] = useState<MenuDraft | null>(null);
   const [imagePreview, setImagePreview] = useState("");
   const [message, setMessage] = useState("");
@@ -84,15 +91,27 @@ export function CatalogManager() {
   async function applyTemplateToDraft() {
     if (!draft?.id || !selectedTemplateId) { setMessage("Simpan menu terlebih dahulu, lalu pilih template."); return; }
     const existing = draft.configuration.variants.length + draft.configuration.addons.length > 0;
-    const confirmed = !existing || window.confirm(`Konfigurasi menu ${draft.name} akan diganti sesuai mode yang dipilih. Lanjutkan?`);
-    if (!confirmed) return;
-    if (await mutate(`/api/v1/admin/menus/${draft.id}/apply-template`, "POST", { templateId: selectedTemplateId, mode: applyMode, confirmed })) setDraft(null);
+    if (existing) { setApplyTemplateConfirmation(true); return; }
+    if (await mutate(`/api/v1/admin/menus/${draft.id}/apply-template`, "POST", { templateId: selectedTemplateId, mode: applyMode, confirmed: true })) setDraft(null);
+  }
+
+  async function confirmApplyTemplate() {
+    if (!draft?.id || !selectedTemplateId) return;
+    const applied = await mutate(`/api/v1/admin/menus/${draft.id}/apply-template`, "POST", { templateId: selectedTemplateId, mode: applyMode, confirmed: true });
+    setApplyTemplateConfirmation(false);
+    if (applied) setDraft(null);
   }
 
   async function saveDraftAsTemplate() {
     if (!draft?.id) { setMessage("Simpan menu terlebih dahulu sebelum membuat template."); return; }
-    const name = window.prompt("Nama template", `${draft.name} — konfigurasi`);
-    if (name?.trim()) await mutate("/api/v1/admin/templates/from-menu", "POST", { menuId: draft.id, name });
+    setTemplateName(`${draft.name} — konfigurasi`);
+    setSaveTemplateDialogOpen(true);
+  }
+
+  async function submitSaveDraftAsTemplate(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!draft?.id || !templateName.trim()) return;
+    if (await mutate("/api/v1/admin/templates/from-menu", "POST", { menuId: draft.id, name: templateName.trim() })) setSaveTemplateDialogOpen(false);
   }
 
   function imageUrl(path: string) { return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/menu-images/${path}`; }
@@ -183,45 +202,77 @@ export function CatalogManager() {
       </AlertDialogContent>
     </AlertDialog>
 
-    <section className="rounded-xl border bg-white p-4 md:p-5">
-      <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-lg font-semibold">Menu</h2><p className="text-sm text-neutral-500">Menu dalam kategori nonaktif tidak tampil di katalog pelanggan.</p></div><button onClick={newMenu} disabled={!categories.length} className="rounded bg-neutral-900 px-4 py-2 text-sm text-white">Tambah menu</button></div>
+    <Card>
+      <CardHeader className="flex-row items-center justify-between">
+        <div><CardTitle>Menu</CardTitle><p className="mt-1 text-sm text-muted-foreground">Menu dalam kategori nonaktif tidak tampil di katalog pelanggan.</p></div>
+        <Button onClick={newMenu} disabled={!categories.length}>Tambah menu</Button>
+      </CardHeader>
+      <CardContent>
       {message && <p role="status" className="mt-3 text-sm text-neutral-700">{message}</p>}
-      <div className="mt-4 space-y-2">
-        {menus.map((menu, index) => <article key={menu.id} draggable onDragStart={() => setDraggedMenu(menu.id)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (draggedMenu && draggedMenu !== menu.id) void reorderMenu(draggedMenu, menu.id); setDraggedMenu(null); }} className="flex flex-wrap items-center gap-3 rounded-lg border p-3">
+      <div className="mt-4 space-y-3">
+        {menus.map((menu, index) => <Card key={menu.id} draggable onDragStart={() => setDraggedMenu(menu.id)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (draggedMenu && draggedMenu !== menu.id) void reorderMenu(draggedMenu, menu.id); setDraggedMenu(null); }} className="flex flex-wrap items-center gap-3 p-3">
           {menu.image_path && <img src={imageUrl(menu.image_path)} alt="" className="h-14 w-14 rounded object-cover" />}
-          <div className="min-w-40 flex-1"><h3 className="font-medium">{menu.name}</h3><p className="text-sm text-neutral-500">{menu.categoryName} · {rupiah.format(menu.price)} · {menu.is_active ? "Aktif" : "Nonaktif"}</p></div>
-          <button onClick={() => editMenu(menu)} className="text-sm underline">Edit</button>
-          <button onClick={() => void mutate(`/api/v1/admin/menus/${menu.id}`, "PATCH", { categoryId: menu.category_id, name: menu.name, description: menu.description, price: menu.price, imagePath: menu.image_path, isActive: !menu.is_active, sortOrder: menu.sort_order, configuration: menu.configuration })} className="text-sm underline">{menu.is_active ? "Nonaktifkan" : "Aktifkan"}</button>
-          <button onClick={() => { const inCategory = menus.filter((item) => item.category_id === menu.category_id); const position = inCategory.findIndex((item) => item.id === menu.id); const other = inCategory[position - 1]; if (other) void reorderMenu(menu.id, other.id); }} disabled={!menus.slice(0, index).some((item) => item.category_id === menu.category_id)} aria-label="Naikkan urutan menu" className="underline disabled:text-neutral-300">↑</button>
-          <button onClick={() => { const inCategory = menus.filter((item) => item.category_id === menu.category_id); const position = inCategory.findIndex((item) => item.id === menu.id); const other = inCategory[position + 1]; if (other) void reorderMenu(menu.id, other.id); }} disabled={!menus.slice(index + 1).some((item) => item.category_id === menu.category_id)} aria-label="Turunkan urutan menu" className="underline disabled:text-neutral-300">↓</button>
-          <button onClick={() => { if (window.confirm(`Hapus menu ${menu.name}? Menu dengan transaksi historis hanya dapat dinonaktifkan.`)) void mutate(`/api/v1/admin/menus/${menu.id}`, "DELETE"); }} className="text-sm text-red-700 underline">Hapus</button>
-        </article>)}
-        {!menus.length && <p className="rounded-lg bg-neutral-50 p-6 text-center text-sm text-neutral-500">Belum ada menu.</p>}
+          <div className="min-w-40 flex-1"><h3 className="font-medium">{menu.name}</h3><p className="text-sm text-muted-foreground">{menu.categoryName} · {rupiah.format(menu.price)} · {menu.is_active ? "Aktif" : "Nonaktif"}</p></div>
+          <Button size="sm" variant="outline" onClick={() => editMenu(menu)}>Edit</Button>
+          <Button size="sm" variant="ghost" onClick={() => void mutate(`/api/v1/admin/menus/${menu.id}`, "PATCH", { categoryId: menu.category_id, name: menu.name, description: menu.description, price: menu.price, imagePath: menu.image_path, isActive: !menu.is_active, sortOrder: menu.sort_order, configuration: menu.configuration })}>{menu.is_active ? "Nonaktifkan" : "Aktifkan"}</Button>
+          <Button size="sm" variant="ghost" onClick={() => { const inCategory = menus.filter((item) => item.category_id === menu.category_id); const position = inCategory.findIndex((item) => item.id === menu.id); const other = inCategory[position - 1]; if (other) void reorderMenu(menu.id, other.id); }} disabled={!menus.slice(0, index).some((item) => item.category_id === menu.category_id)} aria-label="Naikkan urutan menu">↑</Button>
+          <Button size="sm" variant="ghost" onClick={() => { const inCategory = menus.filter((item) => item.category_id === menu.category_id); const position = inCategory.findIndex((item) => item.id === menu.id); const other = inCategory[position + 1]; if (other) void reorderMenu(menu.id, other.id); }} disabled={!menus.slice(index + 1).some((item) => item.category_id === menu.category_id)} aria-label="Turunkan urutan menu">↓</Button>
+          <Button size="sm" variant="destructive" onClick={() => setMenuToDelete(menu)}>Hapus</Button>
+        </Card>)}
+        {!menus.length && <p className="rounded-lg bg-secondary p-6 text-center text-sm text-muted-foreground">Belum ada menu.</p>}
       </div>
-    </section>
+      </CardContent>
+    </Card>
 
-    {draft && <div role="dialog" aria-modal="true" aria-labelledby="menu-editor-title" className="fixed inset-0 z-40 overflow-y-auto bg-black/40 p-3 md:p-8">
-      <form onSubmit={async (event) => { event.preventDefault(); const body = { categoryId: draft.category_id, name: draft.name, description: draft.description, price: draft.price, imagePath: draft.image_path, isActive: draft.is_active, sortOrder: draft.sort_order, configuration: draft.configuration }; if (await mutate(draft.id ? `/api/v1/admin/menus/${draft.id}` : "/api/v1/admin/menus", draft.id ? "PATCH" : "POST", body)) setDraft(null); }} className="mx-auto max-w-3xl rounded-xl bg-white p-5 shadow-xl md:p-7">
-        <div className="flex justify-between"><h2 id="menu-editor-title" className="text-xl font-semibold">{draft.id ? "Edit menu" : "Menu baru"}</h2><button type="button" onClick={() => setDraft(null)} aria-label="Tutup editor">✕</button></div>
-        <div className="mt-5 grid gap-4 md:grid-cols-2">
-          <label className="text-sm">Nama menu<input required maxLength={160} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} className="mt-1 block w-full rounded border px-3 py-2" /></label>
-          <label className="text-sm">Kategori<select value={draft.category_id} onChange={(event) => { const target = event.target.value; setDraft({ ...draft, category_id: target, sort_order: menus.filter((menu) => menu.category_id === target).length }); }} className="mt-1 block w-full rounded border px-3 py-2">{categories.map((category) => <option key={category.id} value={category.id}>{category.name}{!category.is_active ? " (Nonaktif)" : ""}</option>)}</select></label>
-          <label className="text-sm">Harga dasar (Rp)<input required type="number" min="0" step="1" value={draft.price} onChange={(event) => setDraft({ ...draft, price: Number(event.target.value) })} className="mt-1 block w-full rounded border px-3 py-2" /></label>
-          <label className="flex items-center gap-2 pt-6 text-sm"><input type="checkbox" checked={draft.is_active} onChange={(event) => setDraft({ ...draft, is_active: event.target.checked })} /> Menu aktif</label>
-          <label className="text-sm md:col-span-2">Deskripsi<textarea rows={3} maxLength={2000} value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} className="mt-1 block w-full rounded border px-3 py-2" /></label>
-          <div className="text-sm md:col-span-2"><label>Foto menu (JPG, PNG, WebP; maks 2 MB)<input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadImage(file); }} className="mt-1 block w-full" /></label>{imagePreview && <div className="mt-2 flex items-center gap-3"><img src={imagePreview} alt="Pratinjau foto menu" className="h-24 w-24 rounded object-cover" /><button type="button" onClick={() => { setDraft({ ...draft, image_path: null }); setImagePreview(""); }} className="text-red-700 underline">Hapus foto</button></div>}</div>
-        </div>
-        <section className="mt-5 rounded-lg border border-neutral-200 p-4"><h3 className="font-medium">Template konfigurasi</h3><p className="mt-1 text-xs text-neutral-500">Menerapkan template akan menyalin konfigurasi ke menu ini.</p><div className="mt-3 grid gap-3 sm:grid-cols-[1fr_1fr_auto_auto]">
-          <label className="text-sm">Pilih template<select value={selectedTemplateId} onChange={(event) => { setSelectedTemplateId(event.target.value); setShowTemplatePreview(false); }} className="mt-1 block w-full rounded border px-2 py-2"><option value="">Pilih template</option>{templates.map((template) => <option key={template.id} value={template.id}>{template.name}{template.source ? " · bawaan" : ""}</option>)}</select></label>
-          <label className="text-sm">Mode<select value={applyMode} onChange={(event) => setApplyMode(event.target.value as typeof applyMode)} className="mt-1 block w-full rounded border px-2 py-2"><option value="REPLACE_ALL">Ganti seluruh konfigurasi</option><option value="REPLACE_BY_TYPE">Ganti berdasarkan jenis</option></select></label>
-          <button type="button" disabled={!selectedTemplateId} onClick={() => setShowTemplatePreview(!showTemplatePreview)} className="self-end rounded border px-3 py-2 text-sm disabled:opacity-50">{showTemplatePreview ? "Tutup pratinjau" : "Lihat pratinjau"}</button>
-          <button type="button" disabled={!draft.id || busy} onClick={() => void saveDraftAsTemplate()} className="self-end rounded border px-3 py-2 text-sm disabled:opacity-50">Simpan sebagai template</button>
-        </div>{showTemplatePreview && selectedTemplateId && <div className="mt-3 rounded bg-neutral-50 p-3 text-sm"><p className="font-medium">{templates.find((template) => template.id === selectedTemplateId)?.name}</p><p className="mt-1 text-xs text-neutral-600">{templates.find((template) => template.id === selectedTemplateId)?.configuration.variants.length ?? 0} grup varian dan {templates.find((template) => template.id === selectedTemplateId)?.configuration.addons.length ?? 0} grup add-on.</p>{draft.id && <button type="button" onClick={() => void applyTemplateToDraft()} disabled={busy} className="mt-3 rounded bg-neutral-900 px-3 py-2 text-sm text-white">Terapkan template</button>}</div>}</section>
-        <div className="mt-6"><ConfigurationEditor value={draft.configuration} onChange={(configuration) => setDraft({ ...draft, configuration })} /></div>
-        {draft.configuration.variants.filter((group) => group.options.some((option) => option.pricingMode === "OVERRIDE")).length > 1 && <p role="alert" className="mt-3 text-sm text-red-700">Hanya satu grup varian boleh menggunakan harga override.</p>}
-        <div className="mt-5 flex justify-end gap-2"><button type="button" onClick={() => setDraft(null)} className="rounded border px-4 py-2 text-sm">Batal</button><button disabled={busy} className="rounded bg-neutral-900 px-4 py-2 text-sm text-white">Simpan menu</button></div>
-      </form>
-    </div>}
+    <Dialog open={draft !== null} onOpenChange={(open) => { if (!open) setDraft(null); }}>
+      {draft && <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+        <form onSubmit={async (event) => { event.preventDefault(); const body = { categoryId: draft.category_id, name: draft.name, description: draft.description, price: draft.price, imagePath: draft.image_path, isActive: draft.is_active, sortOrder: draft.sort_order, configuration: draft.configuration }; if (await mutate(draft.id ? `/api/v1/admin/menus/${draft.id}` : "/api/v1/admin/menus", draft.id ? "PATCH" : "POST", body)) setDraft(null); }} className="space-y-5">
+          <DialogHeader><DialogTitle>{draft.id ? "Edit menu" : "Menu baru"}</DialogTitle><DialogDescription>Atur informasi menu dan opsi yang dapat dipilih pelanggan.</DialogDescription></DialogHeader>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2"><Label htmlFor="menu-name">Nama menu</Label><Input id="menu-name" required maxLength={160} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></div>
+            <div className="space-y-2"><Label htmlFor="menu-category">Kategori</Label><Select value={draft.category_id} onValueChange={(target) => setDraft({ ...draft, category_id: target, sort_order: menus.filter((menu) => menu.category_id === target).length })}><SelectTrigger id="menu-category"><SelectValue placeholder="Pilih kategori" /></SelectTrigger><SelectContent>{categories.map((category) => <SelectItem key={category.id} value={category.id}>{category.name}{!category.is_active ? " (Nonaktif)" : ""}</SelectItem>)}</SelectContent></Select></div>
+            <div className="space-y-2"><Label htmlFor="menu-price">Harga dasar (Rp)</Label><Input id="menu-price" required type="number" min="0" step="1" value={draft.price} onChange={(event) => setDraft({ ...draft, price: Number(event.target.value) })} /></div>
+            <div className="flex items-center gap-2 pt-6"><Checkbox id="menu-active" checked={draft.is_active} onCheckedChange={(checked) => setDraft({ ...draft, is_active: checked === true })} /><Label htmlFor="menu-active">Menu aktif</Label></div>
+            <div className="space-y-2 md:col-span-2"><Label htmlFor="menu-description">Deskripsi</Label><Textarea id="menu-description" rows={3} maxLength={2000} value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} /></div>
+            <div className="space-y-2 text-sm md:col-span-2"><Label htmlFor="menu-image">Foto menu (JPG, PNG, WebP; maks 2 MB)</Label><Input id="menu-image" type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadImage(file); }} />{imagePreview && <div className="mt-2 flex items-center gap-3"><img src={imagePreview} alt="Pratinjau foto menu" className="h-24 w-24 rounded object-cover" /><Button type="button" variant="destructive" size="sm" onClick={() => { setDraft({ ...draft, image_path: null }); setImagePreview(""); }}>Hapus foto</Button></div>}</div>
+          </div>
+          <Card>
+            <CardHeader><CardTitle className="text-base">Template konfigurasi</CardTitle><p className="text-sm text-muted-foreground">Menerapkan template akan menyalin konfigurasi ke menu ini.</p></CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-2"><Label htmlFor="menu-template">Pilih template</Label><Select value={selectedTemplateId} onValueChange={(value) => { setSelectedTemplateId(value); setShowTemplatePreview(false); }}><SelectTrigger id="menu-template"><SelectValue placeholder="Pilih template" /></SelectTrigger><SelectContent>{templates.map((template) => <SelectItem key={template.id} value={template.id}>{template.name}{template.source ? " · bawaan" : ""}</SelectItem>)}</SelectContent></Select></div>
+                <div className="space-y-2"><Label htmlFor="template-mode">Mode</Label><Select value={applyMode} onValueChange={(value) => setApplyMode(value as typeof applyMode)}><SelectTrigger id="template-mode"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="REPLACE_ALL">Ganti seluruh konfigurasi</SelectItem><SelectItem value="REPLACE_BY_TYPE">Ganti berdasarkan jenis</SelectItem></SelectContent></Select></div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="outline" disabled={!selectedTemplateId} onClick={() => setShowTemplatePreview(!showTemplatePreview)}>{showTemplatePreview ? "Tutup pratinjau" : "Lihat pratinjau"}</Button>
+                <Button type="button" variant="outline" disabled={!draft.id || busy} onClick={() => void saveDraftAsTemplate()}>Simpan sebagai template</Button>
+                {draft.id && <Button type="button" disabled={!selectedTemplateId || busy} onClick={() => void applyTemplateToDraft()}>Terapkan template</Button>}
+              </div>
+              {showTemplatePreview && selectedTemplateId && <div className="rounded-md bg-secondary p-3 text-sm"><p className="font-medium">{templates.find((template) => template.id === selectedTemplateId)?.name}</p><p className="mt-1 text-muted-foreground">{templates.find((template) => template.id === selectedTemplateId)?.configuration.variants.length ?? 0} grup varian dan {templates.find((template) => template.id === selectedTemplateId)?.configuration.addons.length ?? 0} grup add-on.</p></div>}
+            </CardContent>
+          </Card>
+          <ConfigurationEditor value={draft.configuration} onChange={(configuration) => setDraft({ ...draft, configuration })} />
+          {draft.configuration.variants.filter((group) => group.options.some((option) => option.pricingMode === "OVERRIDE")).length > 1 && <p role="alert" className="text-sm text-destructive">Hanya satu grup varian boleh menggunakan harga override.</p>}
+          <DialogFooter><Button type="button" variant="outline" onClick={() => setDraft(null)}>Batal</Button><Button type="submit" disabled={busy}>Simpan menu</Button></DialogFooter>
+        </form>
+      </DialogContent>}
+    </Dialog>
+
+    <Dialog open={saveTemplateDialogOpen} onOpenChange={setSaveTemplateDialogOpen}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Simpan menu sebagai template</DialogTitle><DialogDescription>Template menyimpan salinan konfigurasi menu saat ini.</DialogDescription></DialogHeader>
+        <form id="save-template-form" className="space-y-2" onSubmit={submitSaveDraftAsTemplate}><Label htmlFor="save-template-name">Nama template</Label><Input id="save-template-name" required maxLength={120} value={templateName} onChange={(event) => setTemplateName(event.target.value)} /></form>
+        <DialogFooter><Button type="button" variant="outline" onClick={() => setSaveTemplateDialogOpen(false)}>Batal</Button><Button type="submit" form="save-template-form" disabled={busy}>Simpan template</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <AlertDialog open={applyTemplateConfirmation} onOpenChange={setApplyTemplateConfirmation}>
+      <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Ganti konfigurasi menu?</AlertDialogTitle><AlertDialogDescription>Konfigurasi menu {draft?.name} akan diganti sesuai mode yang dipilih.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Batal</AlertDialogCancel><AlertDialogAction onClick={() => void confirmApplyTemplate()}>Terapkan template</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
+    </AlertDialog>
+
+    <AlertDialog open={menuToDelete !== null} onOpenChange={(open) => { if (!open) setMenuToDelete(null); }}>
+      <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Hapus menu?</AlertDialogTitle><AlertDialogDescription>Menu {menuToDelete?.name} dengan transaksi historis hanya dapat dinonaktifkan.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Batal</AlertDialogCancel><AlertDialogAction variant="destructive" onClick={() => { const menu = menuToDelete; setMenuToDelete(null); if (menu) void mutate(`/api/v1/admin/menus/${menu.id}`, "DELETE"); }}>Hapus menu</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
+    </AlertDialog>
   </div>;
 }
 
