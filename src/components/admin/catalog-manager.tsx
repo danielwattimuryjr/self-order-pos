@@ -2,6 +2,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { ConfigurationEditor } from "@/components/admin/configuration-editor";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import type { MenuConfiguration } from "@/lib/catalog/built-in-templates";
 
 type Category = { id: string; name: string; sort_order: number; is_active: boolean; menuCount?: number };
@@ -19,6 +25,9 @@ export function CatalogManager() {
   const [applyMode, setApplyMode] = useState<"REPLACE_ALL" | "REPLACE_BY_TYPE">("REPLACE_ALL");
   const [showTemplatePreview, setShowTemplatePreview] = useState(false);
   const [categoryName, setCategoryName] = useState("");
+  const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  const [categoryToDelete, setCategoryToDelete] = useState<Category | null>(null);
   const [draft, setDraft] = useState<MenuDraft | null>(null);
   const [imagePreview, setImagePreview] = useState("");
   const [message, setMessage] = useState("");
@@ -104,24 +113,75 @@ export function CatalogManager() {
     await mutate("/api/v1/admin/menus/reorder", "PATCH", { categoryId: sourceMenu.category_id, ids: next.map((menu) => menu.id) });
   }
 
+  function openCategoryDialog(category?: Category) {
+    setEditingCategory(category ?? null);
+    setCategoryName(category?.name ?? "");
+    setCategoryDialogOpen(true);
+  }
+
+  async function saveCategory(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const saved = await mutate(
+      editingCategory ? `/api/v1/admin/categories/${editingCategory.id}` : "/api/v1/admin/categories",
+      editingCategory ? "PATCH" : "POST",
+      { name: categoryName },
+    );
+    if (saved) {
+      setCategoryDialogOpen(false);
+      setEditingCategory(null);
+      setCategoryName("");
+    }
+  }
+
   return <div className="mt-6 space-y-8">
-    <section className="rounded-xl border bg-white p-4 md:p-5">
-      <h2 className="text-lg font-semibold">Kategori</h2>
-      <form className="mt-3 flex flex-wrap gap-2" onSubmit={async (event) => { event.preventDefault(); if (await mutate("/api/v1/admin/categories", "POST", { name: categoryName })) setCategoryName(""); }}>
-        <label className="sr-only" htmlFor="new-category">Nama kategori</label><input id="new-category" required maxLength={100} value={categoryName} onChange={(event) => setCategoryName(event.target.value)} placeholder="Nama kategori baru" className="min-w-56 rounded border px-3 py-2 text-sm" />
-        <button disabled={busy} className="rounded bg-neutral-900 px-4 py-2 text-sm text-white">Tambah kategori</button>
-      </form>
-      <ul className="mt-4 divide-y">
+    <Card>
+      <CardHeader className="flex-row items-center justify-between">
+        <CardTitle>Kategori</CardTitle>
+        <Button onClick={() => openCategoryDialog()}>Tambah kategori</Button>
+      </CardHeader>
+      <CardContent>
+      <ul className="divide-y">
         {categories.map((category, index) => <li key={category.id} draggable onDragStart={() => setDraggedCategory(category.id)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (draggedCategory && draggedCategory !== category.id) void reorderCategory(draggedCategory, category.id); setDraggedCategory(null); }} className="flex flex-wrap items-center gap-2 py-3 text-sm">
           <span className="min-w-20 flex-1 font-medium">{category.name} <span className="font-normal text-neutral-500">({category.menuCount ?? 0} menu · {category.is_active ? "Aktif" : "Nonaktif"})</span></span>
-          <button onClick={() => { const name = window.prompt("Nama kategori", category.name); if (name?.trim()) void mutate(`/api/v1/admin/categories/${category.id}`, "PATCH", { name }); }} className="underline">Ubah</button>
-          <button onClick={() => void mutate(`/api/v1/admin/categories/${category.id}`, "PATCH", { isActive: !category.is_active })} className="underline">{category.is_active ? "Nonaktifkan" : "Aktifkan"}</button>
-          <button onClick={() => { const next = categories[index - 1]; if (next) void reorderCategory(category.id, next.id); }} disabled={index === 0} aria-label="Naikkan urutan kategori" className="px-1 underline disabled:text-neutral-300">↑</button>
-          <button onClick={() => { const next = categories[index + 1]; if (next) void reorderCategory(category.id, next.id); }} disabled={index === categories.length - 1} aria-label="Turunkan urutan kategori" className="px-1 underline disabled:text-neutral-300">↓</button>
-          <button onClick={() => { if (window.confirm(`Hapus kategori ${category.name}? Kategori yang masih memiliki menu tidak dapat dihapus.`)) void mutate(`/api/v1/admin/categories/${category.id}`, "DELETE"); }} className="text-red-700 underline">Hapus</button>
+          <Button size="sm" variant="ghost" onClick={() => openCategoryDialog(category)}>Ubah</Button>
+          <Button size="sm" variant="ghost" onClick={() => void mutate(`/api/v1/admin/categories/${category.id}`, "PATCH", { isActive: !category.is_active })}>{category.is_active ? "Nonaktifkan" : "Aktifkan"}</Button>
+          <Button size="sm" variant="ghost" onClick={() => { const next = categories[index - 1]; if (next) void reorderCategory(category.id, next.id); }} disabled={index === 0} aria-label="Naikkan urutan kategori">↑</Button>
+          <Button size="sm" variant="ghost" onClick={() => { const next = categories[index + 1]; if (next) void reorderCategory(category.id, next.id); }} disabled={index === categories.length - 1} aria-label="Turunkan urutan kategori">↓</Button>
+          <Button size="sm" variant="destructive" onClick={() => setCategoryToDelete(category)}>Hapus</Button>
         </li>)}
       </ul>
-    </section>
+      </CardContent>
+    </Card>
+
+    <Dialog open={categoryDialogOpen} onOpenChange={(open) => { setCategoryDialogOpen(open); if (!open) setEditingCategory(null); }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{editingCategory ? "Ubah kategori" : "Tambah kategori"}</DialogTitle>
+          <DialogDescription>{editingCategory ? "Ubah nama kategori menu." : "Buat kategori untuk mengelompokkan menu."}</DialogDescription>
+        </DialogHeader>
+        <form id="category-form" className="space-y-2" onSubmit={saveCategory}>
+          <Label htmlFor="category-name">Nama kategori</Label>
+          <Input id="category-name" required maxLength={100} value={categoryName} onChange={(event) => setCategoryName(event.target.value)} autoFocus />
+        </form>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={() => setCategoryDialogOpen(false)}>Batal</Button>
+          <Button type="submit" form="category-form" disabled={busy}>{editingCategory ? "Simpan perubahan" : "Tambah kategori"}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <AlertDialog open={categoryToDelete !== null} onOpenChange={(open) => { if (!open) setCategoryToDelete(null); }}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Hapus kategori?</AlertDialogTitle>
+          <AlertDialogDescription>Kategori “{categoryToDelete?.name}” hanya dapat dihapus jika tidak memiliki menu.</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Batal</AlertDialogCancel>
+          <AlertDialogAction variant="destructive" onClick={() => { const category = categoryToDelete; setCategoryToDelete(null); if (category) void mutate(`/api/v1/admin/categories/${category.id}`, "DELETE"); }}>Hapus kategori</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
 
     <section className="rounded-xl border bg-white p-4 md:p-5">
       <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-lg font-semibold">Menu</h2><p className="text-sm text-neutral-500">Menu dalam kategori nonaktif tidak tampil di katalog pelanggan.</p></div><button onClick={newMenu} disabled={!categories.length} className="rounded bg-neutral-900 px-4 py-2 text-sm text-white">Tambah menu</button></div>

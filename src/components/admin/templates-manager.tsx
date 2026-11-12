@@ -2,6 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ConfigurationEditor } from "@/components/admin/configuration-editor";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import type { MenuConfiguration } from "@/lib/catalog/built-in-templates";
 
 type TemplateCategory = { id: string; name: string };
@@ -22,6 +27,10 @@ export function TemplatesManager() {
   const [applyMode, setApplyMode] = useState<"REPLACE_ALL" | "REPLACE_BY_TYPE">("REPLACE_ALL");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
+  const [categoryName, setCategoryName] = useState("");
+  const [editingCategory, setEditingCategory] = useState<TemplateCategory | null>(null);
+  const [categoryToDelete, setCategoryToDelete] = useState<TemplateCategory | null>(null);
 
   const load = useCallback(async () => {
     const [templateResponse, menuResponse] = await Promise.all([fetch("/api/v1/admin/templates", { cache: "no-store" }), fetch("/api/v1/admin/menus", { cache: "no-store" })]);
@@ -62,8 +71,24 @@ export function TemplatesManager() {
     if (await mutate(draft.id ? `/api/v1/admin/templates/${draft.id}` : "/api/v1/admin/templates", draft.id ? "PATCH" : "POST", payload)) setDraft(null);
   }
 
-  async function createCategory() {
-    const name = window.prompt("Nama kategori template"); if (name?.trim()) await mutate("/api/v1/admin/template-categories", "POST", { name });
+  function openCategoryDialog(category?: TemplateCategory) {
+    setEditingCategory(category ?? null);
+    setCategoryName(category?.name ?? "");
+    setCategoryDialogOpen(true);
+  }
+
+  async function saveCategory(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const saved = await mutate(
+      editingCategory ? `/api/v1/admin/template-categories/${editingCategory.id}` : "/api/v1/admin/template-categories",
+      editingCategory ? "PATCH" : "POST",
+      { name: categoryName },
+    );
+    if (saved) {
+      setCategoryDialogOpen(false);
+      setEditingCategory(null);
+      setCategoryName("");
+    }
   }
 
   async function duplicate(template: Template) {
@@ -85,16 +110,42 @@ export function TemplatesManager() {
     await mutate(`/api/v1/admin/menus/${menu.id}/apply-template`, "POST", { templateId: template.id, mode: applyMode, confirmed });
   }
 
-  async function saveCategory(category: TemplateCategory) {
-    const name = window.prompt("Nama kategori template", category.name); if (name?.trim() && name !== category.name) await mutate(`/api/v1/admin/template-categories/${category.id}`, "PATCH", { name });
-  }
-
   return <div className="mt-6 space-y-6">
     {message && <p role="status" className="rounded-lg bg-neutral-100 p-3 text-sm">{message}</p>}
     <section className="rounded-xl border bg-white p-4 md:p-5">
-      <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-semibold">Kategori template</h2><p className="text-sm text-neutral-500">Kategori ini terpisah dari kategori menu.</p></div><button onClick={() => void createCategory()} className="rounded border px-3 py-2 text-sm">Tambah kategori</button></div>
-      <div className="mt-3 flex flex-wrap gap-2">{categories.map((category) => <div key={category.id} className="rounded-full border px-3 py-1.5 text-sm">{category.name} <button aria-label={`Ubah kategori ${category.name}`} onClick={() => void saveCategory(category)} className="ml-1 underline">Ubah</button><button aria-label={`Hapus kategori ${category.name}`} onClick={() => { if (window.confirm(`Hapus ${category.name}? Template akan menjadi Tanpa Kategori.`)) void mutate(`/api/v1/admin/template-categories/${category.id}`, "DELETE"); }} className="ml-1 text-red-700 underline">Hapus</button></div>)}</div>
+      <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-semibold">Kategori template</h2><p className="text-sm text-neutral-500">Kategori ini terpisah dari kategori menu.</p></div><Button variant="outline" onClick={() => openCategoryDialog()}>Tambah kategori</Button></div>
+      <div className="mt-3 flex flex-wrap gap-2">{categories.map((category) => <div key={category.id} className="flex items-center gap-1 rounded-full border px-3 py-1.5 text-sm">{category.name}<Button size="sm" variant="ghost" aria-label={`Ubah kategori ${category.name}`} onClick={() => openCategoryDialog(category)}>Ubah</Button><Button size="sm" variant="destructive" aria-label={`Hapus kategori ${category.name}`} onClick={() => setCategoryToDelete(category)}>Hapus</Button></div>)}</div>
     </section>
+
+    <Dialog open={categoryDialogOpen} onOpenChange={(open) => { setCategoryDialogOpen(open); if (!open) setEditingCategory(null); }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{editingCategory ? "Ubah kategori template" : "Tambah kategori template"}</DialogTitle>
+          <DialogDescription>Kategori template terpisah dari kategori menu.</DialogDescription>
+        </DialogHeader>
+        <form id="template-category-form" className="space-y-2" onSubmit={saveCategory}>
+          <Label htmlFor="template-category-name">Nama kategori</Label>
+          <Input id="template-category-name" required maxLength={100} value={categoryName} onChange={(event) => setCategoryName(event.target.value)} autoFocus />
+        </form>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={() => setCategoryDialogOpen(false)}>Batal</Button>
+          <Button type="submit" form="template-category-form" disabled={busy}>{editingCategory ? "Simpan perubahan" : "Tambah kategori"}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <AlertDialog open={categoryToDelete !== null} onOpenChange={(open) => { if (!open) setCategoryToDelete(null); }}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Hapus kategori template?</AlertDialogTitle>
+          <AlertDialogDescription>Template di kategori “{categoryToDelete?.name}” akan menjadi Tanpa Kategori.</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Batal</AlertDialogCancel>
+          <AlertDialogAction variant="destructive" onClick={() => { const category = categoryToDelete; setCategoryToDelete(null); if (category) void mutate(`/api/v1/admin/template-categories/${category.id}`, "DELETE"); }}>Hapus kategori</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
 
     <section className="rounded-xl border bg-white p-4 md:p-5">
       <div className="flex flex-wrap items-end justify-between gap-3"><div><h2 className="font-semibold">Template tersedia</h2><p className="text-sm text-neutral-500">Template bawaan tidak dapat diubah. Semua perubahan custom disimpan manual.</p></div><button onClick={() => beginEdit()} className="rounded bg-neutral-900 px-4 py-2 text-sm text-white">Buat template</button></div>
