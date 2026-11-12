@@ -49,6 +49,8 @@
 
 - Login → Sales Dashboard.
 - Sidebar: Dashboard, Pesanan, Menu, Voucher, Meja, Transaksi, Staf, Audit Log.
+- Meja: tambah, ubah nomor, aktif/nonaktif, dan unduh QR individual atau PDF semua meja. QR memakai UUIDv4 stabil.
+- Pengaturan restoran: satu jadwal buka/tutup harian, tutup sementara dengan alasan, dan reopen dengan konfirmasi.
 - Menu detail includes variant/add-on editor and template tools.
 - Template management supports built-in/custom, categories, search/filter/sort, preview, apply modes, duplicate, save from menu, manual save, optimistic locking.
 - Admin can configure operating hours and temporary close/reopen.

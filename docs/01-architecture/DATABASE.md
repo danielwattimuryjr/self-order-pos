@@ -9,9 +9,10 @@ Use UUID primary keys, `timestamptz` for instants, `NUMERIC(precision,0)` or int
 - `audit_logs`: actor staff ID, action, entity type/id, before/after JSONB, metadata JSONB, created_at. Append-only from application UI.
 
 ### Restaurant configuration
-- `dining_tables`: stable UUID, immutable `table_code`/QR identifier, `table_number`, active flag, timestamps. Number unique and never reused after retirement.
-- `restaurant_settings`: singleton config with `timezone='Asia/Jakarta'`, opening time, closing time, temporary close state/reason, updated_by.
-- `table_sessions`: table_id, started_at, expires_at, closed_at, status. Enforce at most one active session per table with partial unique index.
+- `dining_tables`: stable UUID, immutable random UUIDv4 `table_code`/QR identifier, `table_number`, active flag, timestamps. Number unique and never reused after retirement.
+- `restaurant_settings`: singleton config with `timezone='Asia/Jakarta'`, one opening/closing time used every day, temporary close state/reason, updated_by. Null hours mean the schedule is not configured yet.
+- `table_sessions`: table_id, started_at, expires_at, closed_at, status. Enforce at most one active session per table with partial unique index. Initial expiry is 60 minutes; only valid order/payment activity may extend it.
+- `audit_logs`: append-only administrative event records; Phase 2 writes settings and table mutations, while the UI is planned for Phase 7.
 
 ### Catalog
 - `categories`: name, sort_order, is_active, timestamps.

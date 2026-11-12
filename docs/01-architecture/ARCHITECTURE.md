@@ -69,6 +69,8 @@ Use database transactions or carefully designed Postgres RPC for:
 - Reserve voucher quota.
 - Apply successful payment once and create one kitchen ticket.
 - Cancel unpaid order after verifying payment state.
+- Resolve/join an active table session under a row lock and partial unique constraint.
+- Apply restaurant settings and table changes with their audit entries atomically.
 - Move tickets to history and clear all read markers at closing.
 - Template optimistic-lock update.
 

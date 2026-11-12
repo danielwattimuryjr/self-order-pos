@@ -5,6 +5,7 @@ Dokumen ini adalah sumber kebenaran aturan bisnis. Semua waktu menggunakan `Asia
 ## 1. Sesi meja dan QR
 
 - Setiap meja memiliki stable ID dan QR URL permanen, misalnya `/order/TABLE-01`. QR tidak berubah ketika sesi berganti atau nomor meja diedit.
+- Table code dibuat sebagai UUIDv4 acak, permanen dan tidak dapat diedit. Kode ini mengurangi tebakan kasual, tetapi bukan mekanisme otorisasi.
 - Satu meja hanya boleh memiliki satu sesi aktif.
 - Scan pertama membuat sesi jika belum ada; scan berikutnya bergabung ke sesi aktif yang sama.
 - Satu sesi dapat memiliki banyak order independen. Setiap order memiliki pembayaran sendiri.
@@ -140,7 +141,7 @@ Dokumen ini adalah sumber kebenaran aturan bisnis. Semua waktu menggunakan `Asia
 - Transaction history menampilkan order number, waktu bayar, meja, total paid, diskon voucher, payment method, payment status. Search order number dan date filter.
 - Transaction detail read-only setelah paid.
 - Staff boleh melihat order/transaction detail untuk operasi, tetapi tidak boleh melihat agregat/analytics/revenue dashboard.
-- Operational hours: Admin mengatur jam buka/tutup sama setiap hari, daily schedule, mendukung overnight (mis. 10:00–02:00). Staff hanya melihat.
+- Operational hours: Admin mengatur satu jadwal jam buka/tutup yang sama setiap hari, mendukung overnight (mis. 10:00–02:00). Staff hanya melihat.
 - Sebelum buka/setelah tutup, order baru tidak dapat dibuat. Order yang dibuat sebelum closing tetap mendapat payment window 15 menit.
 - Operational date dimulai saat restoran buka. Order setelah midnight sebelum close tetap milik operational date sebelumnya.
 - Order number format `ORD-DDMMYYNNN`, tanggal berdasarkan operational date, sequence atomic; minimum 3 digit dan melebar di atas 999.

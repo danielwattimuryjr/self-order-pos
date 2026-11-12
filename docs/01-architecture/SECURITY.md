@@ -24,6 +24,7 @@
 - Generate cryptographically random per-order token (high entropy).
 - Store only token hash; show raw token only to the customer once as URL path/query secret.
 - Never use order number, table code, or session ID as authorization secret.
+- Table QR codes use random UUIDv4 values to reduce casual guessing, but possession of the QR URL is not proof of authorization or physical presence.
 - Rate limit token routes; use constant-time hash comparison where applicable.
 - Allow token revocation.
 - Customer token grants access only to that single order/receipt, never other orders in same table session.

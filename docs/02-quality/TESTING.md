@@ -15,6 +15,12 @@
 - Expired session cannot create order; QR scan creates new session.
 - Table deactivation blocks new sessions while preserving history.
 
+### Restaurant settings and tables
+- Opening/closing uses the same daily schedule and handles overnight hours in Asia/Jakarta.
+- Temporary close requires a reason, resets at the next opening time, and is audit logged.
+- Table codes remain unchanged when the displayed table number changes; retired numbers cannot be reused.
+- QR export contains active tables only and customer QR paths do not act as authorization tokens.
+
 ### Order/payment
 - Order creation stores server-calculated snapshot and 15-minute deadline.
 - Refresh does not create another order/payment attempt.

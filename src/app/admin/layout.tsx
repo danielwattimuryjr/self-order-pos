@@ -2,7 +2,7 @@ import Link from "next/link";
 import { signOut } from "@/app/actions/auth";
 import { requireRole } from "@/lib/auth/current-staff";
 
-const upcoming = ["Pesanan", "Menu", "Voucher", "Meja", "Transaksi", "Staf", "Audit Log"];
+const upcoming = ["Pesanan", "Menu", "Voucher", "Transaksi", "Staf", "Audit Log"];
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +15,8 @@ export default async function AdminLayout({ children }: Readonly<{ children: Rea
         <p className="mt-5 text-sm text-neutral-600">{staff.name} · Admin</p>
         <nav aria-label="Navigasi Admin" className="mt-7 space-y-1">
           <Link href="/admin/dashboard" className="block rounded-md bg-neutral-100 px-3 py-2 text-sm">Dashboard</Link>
+          <Link href="/admin/tables" className="block rounded-md px-3 py-2 text-sm hover:bg-neutral-100">Meja</Link>
+          <Link href="/admin/settings" className="block rounded-md px-3 py-2 text-sm hover:bg-neutral-100">Jam Operasional</Link>
           {upcoming.map((item) => <span key={item} aria-disabled="true" className="block cursor-not-allowed px-3 py-2 text-sm text-neutral-400">{item}</span>)}
         </nav>
         <form action={signOut} className="mt-7"><button className="text-sm text-neutral-600 underline">Keluar</button></form>
