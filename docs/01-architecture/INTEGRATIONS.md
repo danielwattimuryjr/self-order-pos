@@ -40,7 +40,8 @@
 - Supabase Storage bucket for menu images.
 - Limit 2 MB; JPG/JPEG/PNG/WebP.
 - Replace old image only after successful new upload and DB update.
-- Use signed URLs or public read policy according to intended public catalog exposure; upload/delete Admin-only.
+- Bucket `menu-images` is public-read for catalog images; upload, update, and delete policies require an active Admin.
+- The bucket and upload handler enforce the 2 MB JPEG/PNG/WebP limit. The application validates file signatures as well as MIME type.
 
 ## 6. Printer
 

@@ -90,6 +90,7 @@ Dokumen ini adalah sumber kebenaran aturan bisnis. Semua waktu menggunakan `Asia
 - Add-on group multi-select; required/optional dengan min/max selection.
 - Add-on option dapat memiliki quantity; harga = unit price × quantity.
 - Variant pricing mendukung adjustment/additive atau override/base-price replacement. Add-on selalu menambah harga.
+- Dalam satu menu, maksimal satu grup varian boleh memiliki opsi ber-mode `OVERRIDE`; grup lain dapat menggunakan `ADJUSTMENT`. Jika opsi `OVERRIDE` dipilih, nilainya menjadi harga dasar dan seluruh penyesuaian dari grup lain ditambahkan.
 - Total item = harga dasar/hasil variant + total add-on, dikali quantity menu sesuai definisi kalkulasi server.
 - Setiap perubahan config berlaku untuk order baru; order historis menyimpan snapshot.
 - Konfigurasi varian/add-on dikelola dalam detail menu.
@@ -99,6 +100,7 @@ Dokumen ini adalah sumber kebenaran aturan bisnis. Semua waktu menggunakan `Asia
 ## 8. Template varian/add-on
 
 - Ada template bawaan (frontend config, read-only, tidak dapat diedit/dihapus) dan template custom (database).
+- Template bawaan V1: `Level pedas` (Tidak pedas, Sedang, Pedas), `Tingkat gula` (Normal, Kurang manis, Tanpa gula), dan `Es batu` (Normal, Sedikit, Tanpa es). Ketiganya berupa grup varian opsional dengan harga penyesuaian Rp0. Tidak ada template add-on berbayar bawaan karena harga mengikuti menu.
 - Template adalah preset; tidak ada relasi database antara template dan menu.
 - Menerapkan template menyalin konfigurasi ke menu. Setelah disalin, konfigurasi menu independen.
 - Template custom dapat dibuat dari awal atau dari konfigurasi menu yang ada; template menjadi salinan independen.

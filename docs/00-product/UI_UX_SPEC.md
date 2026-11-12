@@ -48,6 +48,7 @@
 - Pesanan: order list/detail, operational controls where authorized.
 - Menu: category/menu list with drag/drop sorting; create/edit forms; image upload; active toggle.
 - Menu detail: variant/add-on editor and templates.
+- Template page: built-in/custom cards, search, category filter, sorting, preview, duplicate, save-from-menu, manual save, and apply modes.
 - Voucher: list newest first, search code/name, create/edit, status and validity.
 - Meja: list, add/edit/deactivate, download individual QR and all QR in PDF.
 - Transaksi: read-only list and detail; order number search/date filter.

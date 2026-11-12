@@ -10,7 +10,7 @@ Errors use appropriate HTTP status and stable error codes; never leak provider s
 
 ## Public customer endpoints
 
-- `GET /tables/{tableCode}/catalog` — resolve active table/session context and return categories, active menus, variant/add-on config, operating status. Do not expose internal staff data.
+- `GET /tables/{tableCode}/catalog` — resolve active table/session context and return categories, active menus, variant/add-on config, operating status. A `sessionId` query parameter validates the existing browsing session during catalog refresh; expired sessions return `409 SESSION_EXPIRED` and are not silently replaced. Do not expose internal staff data.
 - `POST /sessions/{sessionId}/orders` — validate session, hours, cart snapshots, menu/category active state, current prices/configuration, and voucher; accept optional receipt email and create order/payment deadline atomically.
 - `POST /orders/{orderId}/payment-attempts` — create/retry Midtrans payment attempt while order remains valid.
 - `GET /orders/{orderId}/payment-status` — public-safe payment state via access proof or protected opaque identifier; do not expose guessable IDs alone.
@@ -37,8 +37,9 @@ Errors use appropriate HTTP status and stable error codes; never leak provider s
 ## Admin endpoints
 
 - CRUD `/admin/categories`, `/admin/menus`, `/admin/tables`, `/admin/vouchers`, `/admin/staff`.
-- Menu endpoints include image upload path, sort order, active status, variant/add-on config.
-- Template endpoints: list/create/get/update/delete/duplicate, categories CRUD, save-from-menu, preview/apply. Update uses `version` for optimistic locking.
+- `PATCH /admin/categories/reorder` and `PATCH /admin/menus/reorder` persist manual ordering.
+- `POST /admin/menus/image` validates and uploads a menu photo; menu endpoints include image path, sort order, active status, and variant/add-on config.
+- Template endpoints: list/create/update/delete, duplicate, template category CRUD, save-from-menu, preview in Admin UI, and apply to a menu with `REPLACE_ALL` or `REPLACE_BY_TYPE`. Update uses `version` for optimistic locking.
 - `GET/PUT /admin/settings/operating-hours`.
 - `POST /admin/restaurant/temporary-close`; `POST /admin/restaurant/reopen`.
 - `GET /admin/transactions` and detail (read-only for paid orders).
@@ -54,5 +55,6 @@ Errors use appropriate HTTP status and stable error codes; never leak provider s
 - Use pagination cursors or page/limit with bounded max; history default 20.
 - Use idempotency keys for order/payment creation where appropriate.
 - Rate limit public table/catalog/order/receipt endpoints.
+- Catalog requests are limited to 60 requests per minute for both the source IP and table code; excess requests receive `429 RATE_LIMITED` with `Retry-After`.
 - Return 401 unauthenticated, 403 unauthorized/inactive, 404 non-disclosing for inaccessible token resources, 409 business conflict, 422 validation failure, 429 rate limited.
 - Realtime changes should not be implemented as unauthenticated write endpoints.

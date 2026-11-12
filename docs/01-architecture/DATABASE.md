@@ -11,6 +11,9 @@ Use UUID primary keys, `timestamptz` for instants, `NUMERIC(precision,0)` or int
 ### Restaurant configuration
 - `dining_tables`: stable UUID, immutable random UUIDv4 `table_code`/QR identifier, `table_number`, active flag, timestamps. Number unique and never reused after retirement.
 - `restaurant_settings`: singleton config with `timezone='Asia/Jakarta'`, one opening/closing time used every day, temporary close state/reason, updated_by. Null hours mean the schedule is not configured yet.
+- `restaurant_public_status`: sanitized, trigger-maintained projection of public opening/temporary-closure fields. It contains no staff identifiers and is published to Realtime for the customer catalog.
+- `catalog_change_notices`: a sanitized revision counter published to Realtime; catalog mutations increment it so public clients can refetch only currently visible rows without receiving inactive record payloads.
+- `api_rate_limits`: short-lived request counters keyed by SHA-256 fingerprints; table access is restricted to a server-only atomic rate-limit RPC.
 - `table_sessions`: table_id, started_at, expires_at, closed_at, status. Enforce at most one active session per table with partial unique index. Initial expiry is 60 minutes; only valid order/payment activity may extend it.
 - `audit_logs`: append-only administrative event records; Phase 2 writes settings and table mutations, while the UI is planned for Phase 7.
 
@@ -26,6 +29,7 @@ Use UUID primary keys, `timestamptz` for instants, `NUMERIC(precision,0)` or int
 - `template_categories`: name, sort_order, created_by, updated_by, timestamps.
 - `option_templates`: name, nullable category_id, configuration JSONB with schema version, created_by, updated_by, version integer, timestamps.
 - Built-in templates live in frontend configuration and are immutable.
+- At most one variant group per menu may contain `OVERRIDE` options. Selecting one replaces the base price; adjustments in other selected groups are added.
 - No FK from menu configuration to template. Applying a template copies values into menu-owned groups/options.
 
 ### Vouchers
@@ -88,3 +92,5 @@ Order item snapshots must preserve menu name, category name, base/unit price, ch
 ## 5. Implementation notes
 
 This is a logical target model, not a substitute for reviewed SQL migrations. Choose exact enum/check constraints, delete behavior, generated columns, and RPC signatures during migration authoring. Prefer restrictive FK behavior for historical entities; use soft deactivation where history exists. Store token hashes, not raw customer access tokens.
+
+Phase 3 stores menu images in the public `menu-images` Storage bucket (2 MB maximum; JPEG, PNG, WebP). Public object URLs support the unauthenticated catalog; no broad Storage object-list policy is granted. Storage write/delete policies require an active Admin. The catalog tables and sanitized revision/status projections publish changes through Supabase Realtime.

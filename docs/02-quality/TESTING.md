@@ -44,6 +44,8 @@
 
 ### Template
 - Built-in templates are read-only.
+- The built-in spice, sugar, and ice templates are optional single-select groups with zero price adjustment.
+- A menu with more than one variant group containing override options is rejected; override price replaces base and other group adjustments are added.
 - Applying template copies values; no relational coupling to template.
 - Whole-config and by-type apply modes behave as specified.
 - Concurrent template edits trigger optimistic-lock conflict.
@@ -58,6 +60,8 @@
 
 ### Access control
 - Staff cannot call Admin APIs even if UI route is manually entered.
+- Anonymous catalog reads expose only active category/menu/configuration rows; session resolution and rate-limit RPCs are server-only.
+- Catalog requests above 60 per minute per source IP or table code return `429` with a retry delay.
 - Staff cannot access analytics endpoints/data.
 - Inactive Staff loses access across active devices.
 - Customer token for order A cannot access order B.

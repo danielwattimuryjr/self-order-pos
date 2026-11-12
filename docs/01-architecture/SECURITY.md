@@ -46,6 +46,9 @@
 - Sanitize rendered user text; defend against XSS.
 - Validate upload MIME/type/size; do not trust filename extension.
 - Public endpoint rate limits per IP and relevant table/order token.
+- Public catalog requests are limited to 60 per minute per client IP and per table code. The rate-limit key stores only a SHA-256 fingerprint; a server-only service-role client calls the atomic database limiter and session resolver. Do not expose that key in client code.
+- Direct client writes to menus and variant/add-on configuration are revoked; Admin mutations go through RPCs that verify the active Admin profile. Template updates use the version-checked RPC.
+- Public catalog data includes only active category/menu/configuration rows. Menu image reads are public by design; image writes and deletes require an active Admin.
 
 ## 6. Audit Log
 
