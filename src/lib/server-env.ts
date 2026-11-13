@@ -5,6 +5,8 @@ const serverEnvSchema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
   RESEND_API_KEY: z.string().min(1).optional(),
   RESEND_FROM_EMAIL: z.email().optional(),
+  MIDTRANS_SERVER_KEY: z.string().min(1).optional(),
+  MIDTRANS_IS_PRODUCTION: z.enum(["true", "false"]).optional().default("false"),
 });
 
 export function getServerEnv() {

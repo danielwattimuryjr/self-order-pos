@@ -64,6 +64,8 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=<local-anon-key>
 SUPABASE_SERVICE_ROLE_KEY=<local-service-role-key>
 RESEND_API_KEY=<resend-development-key>
 RESEND_FROM_EMAIL=<verified-sender-address>
+MIDTRANS_SERVER_KEY=<midtrans-sandbox-server-key>
+MIDTRANS_IS_PRODUCTION=false
 ```
 
 Ketentuan keamanan:
@@ -71,6 +73,8 @@ Ketentuan keamanan:
 - Nilai di atas hanya contoh nama dan URL; ambil key aktual dari `supabase status -o env`.
 - Service-role/secret key hanya boleh digunakan di server dan tidak boleh memiliki prefix `NEXT_PUBLIC_`.
 - `RESEND_API_KEY` dan `RESEND_FROM_EMAIL` hanya digunakan server-side untuk integrasi email struk.
+- `MIDTRANS_SERVER_KEY` hanya digunakan server-side. Untuk pengembangan, gunakan server key sandbox; `MIDTRANS_IS_PRODUCTION` tetap `false`.
+- Pengujian transaksi sandbox dapat ditunda sampai credential sandbox tersedia; automated tests dan SQL smoke test lokal tidak menghubungi provider.
 - Jangan commit `.env.local`, key, token, atau secret ke Git.
 - Jangan pernah menggunakan credential production untuk pengembangan lokal.
 

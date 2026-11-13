@@ -12,10 +12,12 @@
 ## 2. Midtrans QRIS
 
 - Server creates payment transaction; browser only displays QRIS/deeplink response safe for customer.
+- The current adapter uses Midtrans's server-side HTTP API. Keep `MIDTRANS_SERVER_KEY` server-only. `MIDTRANS_IS_PRODUCTION=false` selects the sandbox endpoint; production must be explicitly configured for a later release.
 - Configure notification URL to webhook endpoint.
-- Verify signature and transaction status server-side.
+- Verify signature and refetch transaction status server-side before applying a notification.
 - Store provider transaction identifiers and safe metadata.
 - Handle pending, settlement/capture success, deny/failure, expire, cancel, and delayed/duplicate notifications.
+- Before customer cancellation or local expiry, verify the provider status; request provider cancellation if still pending, then verify again. A confirmed settlement wins.
 - Verify exact QRIS product/notification behavior and production credentials with merchant account before release.
 
 ## 3. Email provider

@@ -24,6 +24,7 @@ type CartState = { lines: CartLine[]; orderNote: string };
 const emptyCart: CartState = { lines: [], orderNote: "" };
 type VoucherPreview = { code: string; name: string; discountAmount: number; eligibleSubtotal: number; totalAmount: number; cartFingerprint: string };
 type CreatedOrder = { id: string; orderNumber: string; status: "PENDING_PAYMENT"; totalAmount: number; expiresAt: string; accessToken: string };
+type PaymentView = { qrUrl: string | null; paymentStatus: string; attemptStatus: string | null; expiresAt: string; paidAt: string | null };
 const money = (amount: number) => new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(amount);
 
 export function CustomerOrdering({ tableCode }: { tableCode: string }) {
@@ -49,6 +50,13 @@ export function CustomerOrdering({ tableCode }: { tableCode: string }) {
   const [receiptEmail, setReceiptEmail] = useState("");
   const [submittingOrder, setSubmittingOrder] = useState(false);
   const [createdOrder, setCreatedOrder] = useState<CreatedOrder | null>(null);
+  const [paymentView, setPaymentView] = useState<PaymentView | null>(null);
+  const [paymentError, setPaymentError] = useState("");
+  const [paymentBusy, setPaymentBusy] = useState(false);
+  const [cancelOrderConfirm, setCancelOrderConfirm] = useState(false);
+  const [cancelBusy, setCancelBusy] = useState(false);
+  const [paymentNow, setPaymentNow] = useState(0);
+  const [paymentRetry, setPaymentRetry] = useState(0);
 
   const loadCatalog = useCallback(async () => {
     const storageSessionKey = `qr-order-session:${tableCode}`;
@@ -64,7 +72,13 @@ export function CustomerOrdering({ tableCode }: { tableCode: string }) {
     sessionStorage.setItem(storageSessionKey, next.session.id);
     try {
       const savedOrder = sessionStorage.getItem(`qr-order-created:${next.session.id}`);
-      if (savedOrder) setCreatedOrder(JSON.parse(savedOrder) as CreatedOrder);
+      if (savedOrder) {
+        const order = JSON.parse(savedOrder) as CreatedOrder;
+        setCreatedOrder(order);
+        setPaymentNow(Date.now());
+        const savedPayment = sessionStorage.getItem(`qr-payment-view:${order.id}`);
+        if (savedPayment) setPaymentView(JSON.parse(savedPayment) as PaymentView);
+      }
     } catch {
       sessionStorage.removeItem(`qr-order-created:${next.session.id}`);
     }
@@ -76,6 +90,94 @@ export function CustomerOrdering({ tableCode }: { tableCode: string }) {
     try { setCart(JSON.parse(localStorage.getItem(key) ?? "null") as CartState ?? emptyCart); } catch { setCart(emptyCart); }
     setError("");
   }, [tableCode]);
+
+  useEffect(() => {
+    if (!createdOrder) return;
+    let active = true;
+    const updatePayment = (payment: PaymentView) => {
+      if (!active) return;
+      setPaymentView(payment);
+      sessionStorage.setItem(`qr-payment-view:${createdOrder.id}`, JSON.stringify(payment));
+    };
+    const fetchStatus = async () => {
+      try {
+        const response = await fetch(`/api/v1/orders/${createdOrder.id}/payment-status`, { headers: { Authorization: `Bearer ${createdOrder.accessToken}` }, cache: "no-store" });
+        const result = await response.json();
+        if (response.ok && result.data) updatePayment({
+          qrUrl: result.data.qrUrl ?? null, paymentStatus: result.data.paymentStatus,
+          attemptStatus: result.data.attemptStatus ?? null, expiresAt: result.data.paymentExpiresAt ?? result.data.expiresAt,
+          paidAt: result.data.paidAt ?? null,
+        });
+      } catch { /* Polling/realtime will retry. */ }
+    };
+    const ensureAttempt = async (retry = false) => {
+      setPaymentBusy(true); setPaymentError("");
+      try {
+        const keyName = `qr-payment-idempotency:${createdOrder.id}`;
+        let idempotencyKey = retry ? crypto.randomUUID() : sessionStorage.getItem(keyName);
+        if (!idempotencyKey) idempotencyKey = crypto.randomUUID();
+        sessionStorage.setItem(keyName, idempotencyKey);
+        const response = await fetch(`/api/v1/orders/${createdOrder.id}/payment-attempts`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tableCode, accessToken: createdOrder.accessToken, idempotencyKey }),
+        });
+        const result = await response.json();
+        if (!response.ok) {
+          if (result.error?.code === "PAYMENT_QR_PENDING") { await fetchStatus(); return; }
+          throw new Error(result.message ?? "QRIS belum dapat dibuat.");
+        }
+        if (result.data.qrUrl) updatePayment({ qrUrl: result.data.qrUrl, paymentStatus: "PENDING", attemptStatus: result.data.status ?? "PENDING", expiresAt: result.data.expiresAt, paidAt: null });
+        else if (result.data.status === "PAID") updatePayment({ qrUrl: null, paymentStatus: "PAID", attemptStatus: "PAID", expiresAt: createdOrder.expiresAt, paidAt: new Date().toISOString() });
+        else if (result.data.status) updatePayment({ qrUrl: null, paymentStatus: "PENDING", attemptStatus: result.data.status, expiresAt: result.data.expiresAt ?? createdOrder.expiresAt, paidAt: null });
+        await fetchStatus();
+      } catch (error) { if (active) setPaymentError(error instanceof Error ? error.message : "QRIS belum dapat dibuat."); }
+      finally { if (active) setPaymentBusy(false); }
+    };
+    void ensureAttempt(paymentRetry > 0);
+    const poll = setInterval(() => {
+      if (!paymentRealtimeConnected || Date.now() >= new Date(createdOrder.expiresAt).getTime()) void fetchStatus();
+    }, 5000);
+    let paymentRealtimeConnected = false;
+    let channel: ReturnType<ReturnType<typeof createClient>["channel"]> | undefined;
+    void crypto.subtle.digest("SHA-256", new TextEncoder().encode(createdOrder.accessToken)).then((digest) => {
+      if (!active) return;
+      const tokenHash = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+      const supabase = createClient();
+      channel = supabase.channel(`customer-payment:${createdOrder.id}:${tokenHash}`)
+        .on("broadcast", { event: "payment_status_changed" }, () => void fetchStatus())
+        .subscribe((status) => {
+          paymentRealtimeConnected = status === "SUBSCRIBED";
+          if (paymentRealtimeConnected) void fetchStatus();
+        });
+    }).catch(() => undefined);
+    return () => { active = false; clearInterval(poll); if (channel) void createClient().removeChannel(channel); };
+  }, [createdOrder, paymentRetry, tableCode]);
+
+  useEffect(() => {
+    if (!createdOrder || paymentView?.paymentStatus !== "PENDING") return;
+    const timer = setInterval(() => setPaymentNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [createdOrder, paymentView?.paymentStatus]);
+
+  async function cancelOrder() {
+    if (!createdOrder || !catalog) return;
+    setCancelBusy(true); setPaymentError("");
+    try {
+      const response = await fetch(`/api/v1/orders/${createdOrder.id}/cancel`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tableCode, accessToken: createdOrder.accessToken }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.message ?? "Pesanan belum dapat dibatalkan.");
+      setCancelOrderConfirm(false);
+      await fetch(`/api/v1/orders/${createdOrder.id}/payment-status`, { headers: { Authorization: `Bearer ${createdOrder.accessToken}` }, cache: "no-store" }).then((response) => response.json()).then((result) => {
+        if (result.data) setPaymentView({ qrUrl: result.data.qrUrl ?? null, paymentStatus: result.data.paymentStatus, attemptStatus: result.data.attemptStatus ?? null, expiresAt: result.data.paymentExpiresAt ?? result.data.expiresAt, paidAt: result.data.paidAt ?? null });
+      });
+      if (result.data.paymentStatus === "PAID" || result.data.status === "PAID") toast.success("Pembayaran berhasil dikonfirmasi.");
+      else toast.success("Pesanan dibatalkan.");
+    } catch (error) { setPaymentError(error instanceof Error ? error.message : "Pesanan belum dapat dibatalkan."); }
+    finally { setCancelBusy(false); }
+  }
 
   useEffect(() => {
     // Initial catalog state is loaded from an external API.
@@ -186,6 +288,7 @@ export function CustomerOrdering({ tableCode }: { tableCode: string }) {
       if (!response.ok) throw new Error(result.message ?? "Pesanan belum dapat dibuat.");
       const order = result.data as CreatedOrder;
       setCreatedOrder(order);
+      setPaymentNow(Date.now());
       sessionStorage.setItem(`qr-order-created:${catalog.session.id}`, JSON.stringify(order));
       sessionStorage.removeItem(pendingKey);
       setCart({ ...emptyCart });
@@ -291,7 +394,15 @@ export function CustomerOrdering({ tableCode }: { tableCode: string }) {
     <Dialog open={showCart} onOpenChange={setShowCart}>
       <DialogContent className="max-h-[92vh] max-w-xl overflow-y-auto">
         <DialogHeader><DialogTitle>Keranjang</DialogTitle><DialogDescription>{cartCount} item · {money(orderTotal)} termasuk diskon voucher yang masih berlaku</DialogDescription></DialogHeader>
-        {createdOrder && <Card className="border-success/40 bg-success-soft"><CardContent className="space-y-1 p-4"><p className="font-semibold text-success">Pesanan berhasil dibuat</p><p className="text-sm">Nomor pesanan <strong>{createdOrder.orderNumber}</strong></p><p className="text-sm">Status: menunggu pembayaran · Total {money(createdOrder.totalAmount)}</p><p className="text-xs text-muted-foreground">Batas pembayaran {new Date(createdOrder.expiresAt).toLocaleTimeString("id-ID", { timeZone: "Asia/Jakarta", hour: "2-digit", minute: "2-digit" })} WIB. QRIS akan tersedia pada langkah pembayaran.</p></CardContent></Card>}
+        {createdOrder && <Card className="border-primary/20"><CardContent className="space-y-3 p-4 text-center">
+          <div className="text-left"><p className="font-semibold">Pembayaran · {createdOrder.orderNumber}</p><p className="text-sm text-muted-foreground">Total {money(createdOrder.totalAmount)}</p></div>
+          {paymentView?.paymentStatus === "PAID" ? <div role="status" className="rounded-lg bg-success-soft p-4 text-success"><p className="font-semibold">Pembayaran berhasil</p><p className="mt-1 text-sm">Pesanan Anda telah dikonfirmasi.</p></div>
+            : paymentView?.paymentStatus === "CANCELLED" || paymentView?.paymentStatus === "EXPIRED" ? <div role="status" className="rounded-lg bg-secondary p-4"><p className="font-semibold">{paymentView.paymentStatus === "CANCELLED" ? "Pesanan dibatalkan" : "Batas pembayaran berakhir"}</p></div>
+              : paymentView?.qrUrl ? <><Image src={paymentView.qrUrl} alt="Kode QRIS untuk pembayaran" width={320} height={320} unoptimized className="mx-auto aspect-square w-64 rounded-lg border bg-white object-contain p-2" /><p className="text-sm">Pindai QRIS melalui aplikasi pembayaran Anda.</p><p className="text-xs text-muted-foreground">Batas pembayaran {new Date(createdOrder.expiresAt).toLocaleTimeString("id-ID", { timeZone: "Asia/Jakarta", hour: "2-digit", minute: "2-digit" })} WIB{paymentView.paymentStatus === "PENDING" ? ` · ${Math.max(0, Math.ceil((new Date(createdOrder.expiresAt).getTime() - paymentNow) / 1000))} detik tersisa` : ""}</p></>
+                : <div role="status" className="rounded-lg bg-secondary p-4"><p className="font-medium">{paymentBusy ? "Menyiapkan QRIS…" : paymentView?.attemptStatus === "FAILED" ? "Percobaan pembayaran gagal." : "Menunggu QRIS dari provider…"}</p><p className="mt-1 text-sm text-muted-foreground">Status pembayaran diperbarui otomatis.</p>{paymentView?.attemptStatus === "FAILED" && <Button className="mt-3" variant="outline" onClick={() => setPaymentRetry((count) => count + 1)}>Coba lagi</Button>}</div>}
+          {paymentError && <p role="alert" className="text-sm text-destructive">{paymentError}</p>}
+          {paymentView?.paymentStatus === "PENDING" && <Button type="button" variant="outline" className="w-full" onClick={() => setCancelOrderConfirm(true)}>Batalkan pesanan</Button>}
+        </CardContent></Card>}
         {!cart.lines.length && <Card><CardContent className="p-6 text-center text-sm text-muted-foreground">Keranjang masih kosong.</CardContent></Card>}
         <div className="space-y-3">{cart.lines.map((line) => <Card key={line.key}><CardContent className="p-3"><div className="flex justify-between gap-3"><div><h3 className="font-medium">{line.menuName}</h3>{line.choiceLabels.map((label) => <p key={label} className="text-xs text-muted-foreground">{label}</p>)}{line.note && <p className="mt-1 text-xs text-muted-foreground">Catatan: {line.note}</p>}</div><strong className="whitespace-nowrap text-sm">{money(line.unitPrice * line.quantity)}</strong></div>
           {line.unavailable && <p role="alert" className="mt-2 text-sm text-destructive">{line.unavailable}</p>}
@@ -313,6 +424,9 @@ export function CustomerOrdering({ tableCode }: { tableCode: string }) {
 
     <AlertDialog open={cartConfirmation !== null} onOpenChange={(open) => { if (!open) setCartConfirmation(null); }}>
       <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>{cartConfirmation?.kind === "clear" ? "Kosongkan keranjang?" : "Hapus item dari keranjang?"}</AlertDialogTitle><AlertDialogDescription>{cartConfirmation?.kind === "clear" ? "Semua item dalam keranjang akan dihapus." : `${cartConfirmation?.line.menuName} akan dihapus dari keranjang.`}</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Batal</AlertDialogCancel><AlertDialogAction variant="destructive" onClick={confirmCartAction}>{cartConfirmation?.kind === "clear" ? "Kosongkan" : "Hapus item"}</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
+    </AlertDialog>
+    <AlertDialog open={cancelOrderConfirm} onOpenChange={(open) => { if (!cancelBusy) setCancelOrderConfirm(open); }}>
+      <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Batalkan pesanan?</AlertDialogTitle><AlertDialogDescription>Provider akan diperiksa sebelum pembatalan. Jika pembayaran sudah berhasil, pesanan tidak dibatalkan.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel disabled={cancelBusy}>Kembali</AlertDialogCancel><AlertDialogAction variant="destructive" disabled={cancelBusy} onClick={(event) => { event.preventDefault(); void cancelOrder(); }}>{cancelBusy ? "Memeriksa…" : "Batalkan pesanan"}</AlertDialogAction></AlertDialogFooter></AlertDialogContent>
     </AlertDialog>
   </main>;
 }

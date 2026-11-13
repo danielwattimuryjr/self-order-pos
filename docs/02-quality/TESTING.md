@@ -27,6 +27,9 @@
 - Retry allowed only before expiry.
 - Duplicate webhook creates one paid transition and one kitchen ticket.
 - Delayed webhook success wins over cancellation/expiry when provider confirms paid.
+- Payment attempt creation reuses its idempotency key; a second pending attempt cannot be opened concurrently.
+- Webhook signature, transaction identifiers, and amount are verified; duplicate provider events do not repeat voucher consumption.
+- Customer cancellation asks Midtrans to cancel a pending transaction and rechecks status; settlement wins if it races with cancellation.
 - Unpaid/failed/expired orders never appear in kitchen queue.
 - Paid orders cannot be edited/deleted/cancelled.
 

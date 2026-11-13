@@ -35,7 +35,9 @@
 - Never trust browser redirect as proof of payment.
 - Verify delayed webhook/race states directly with provider before cancellation/expiry decisions.
 - Deduplicate webhook event and provider transaction IDs.
-- Idempotently transition order/payment and create ticket exactly once.
+- Idempotently transition order/payment. Phase 6 creates a kitchen ticket exactly once after payment success.
+- Public payment routes require the per-order high-entropy access token and use rate limits. Realtime topic names derive from its SHA-256 hash; broadcast payloads contain no payment details and trigger an authoritative API refetch.
+- Grant the server-only `service_role` only the direct table reads required by payment routes (`orders`, `dining_tables`, and `payments`); keep customer and authenticated direct writes revoked and use the payment RPCs for mutations.
 - Do not log secrets, full raw tokens, or unnecessary personal/payment payloads.
 
 ## 5. Database and input security
