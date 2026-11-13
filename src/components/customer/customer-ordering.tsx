@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Image from "next/image";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -9,6 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
+import { Skeleton } from "@/components/ui/skeleton";
+import { toast } from "sonner";
 import type { MenuConfiguration } from "@/lib/catalog/built-in-templates";
 import { priceForMenuChoice, type MenuChoice } from "@/lib/catalog/price";
 import { createClient } from "@/lib/supabase/client";
@@ -131,6 +134,7 @@ export function CustomerOrdering({ tableCode }: { tableCode: string }) {
       return { ...current, lines: [...current.lines, { ...choice, key: signature, menuId: currentMenu.id, menuName: currentMenu.name, quantity, note: itemNote.trim(), unitPrice: priced.unitPrice, needsAcceptance: false, unavailable: null, lineNotice: null, choiceLabels }] };
     });
     setSelectedMenu(null); setShowCart(true); setNotice("");
+    toast.success(`${currentMenu.name} ditambahkan ke keranjang.`);
   }
 
   function removeLine(key: string) { setCart((current) => ({ ...current, lines: current.lines.filter((line) => line.key !== key) })); }
@@ -145,9 +149,37 @@ export function CustomerOrdering({ tableCode }: { tableCode: string }) {
     setCartConfirmation(null);
   }
 
-  if (loading) return <main className="grid min-h-svh place-items-center p-6 text-muted-foreground">Memuat menu…</main>;
+  if (loading) return (
+    <main aria-busy="true" aria-label="Memuat menu" className="min-h-svh bg-background pb-28">
+      <span className="sr-only" role="status">Memuat menu…</span>
+      <header className="border-b bg-card px-4 py-4">
+        <div className="mx-auto max-w-5xl space-y-2">
+          <Skeleton aria-hidden="true" className="h-3 w-24" />
+          <Skeleton aria-hidden="true" className="h-6 w-44" />
+          <Skeleton aria-hidden="true" className="h-3 w-36" />
+        </div>
+      </header>
+      <div aria-hidden="true" className="sticky top-0 flex gap-2 overflow-hidden border-b bg-background px-4 py-3">
+        <Skeleton className="h-9 w-24 shrink-0 rounded-full" />
+        <Skeleton className="h-9 w-28 shrink-0 rounded-full" />
+        <Skeleton className="h-9 w-20 shrink-0 rounded-full" />
+      </div>
+      <div aria-hidden="true" className="mx-auto grid max-w-5xl grid-cols-2 gap-3 px-4 py-5 md:grid-cols-3 lg:grid-cols-4">
+        {Array.from({ length: 4 }, (_, index) => (
+          <div key={index} className="overflow-hidden rounded-xl border bg-card">
+            <Skeleton className="aspect-square w-full rounded-none" />
+            <div className="space-y-2 p-3">
+              <Skeleton className="h-4 w-4/5" />
+              <Skeleton className="h-4 w-2/5" />
+            </div>
+          </div>
+        ))}
+      </div>
+      <Skeleton aria-hidden="true" className="fixed inset-x-4 bottom-4 mx-auto h-14 max-w-lg rounded-lg" />
+    </main>
+  );
   if (sessionExpired) return <main className="grid min-h-svh place-items-center p-6"><div className="max-w-sm text-center"><h1 className="text-xl font-semibold">Sesi meja berakhir</h1><p className="mt-2 text-sm text-muted-foreground">Pindai ulang QR meja untuk memulai sesi baru. Keranjang pada sesi sebelumnya tidak dipindahkan.</p><Button onClick={() => { sessionStorage.removeItem(`qr-order-session:${tableCode}`); setCatalog(null); setLoading(true); setError(""); void loadCatalog().catch((loadError: unknown) => setError(loadError instanceof Error ? loadError.message : "Meja tidak tersedia.")).finally(() => setLoading(false)); }} className="mt-4">Pindai ulang QR meja</Button></div></main>;
-  if (error && !catalog) return <main className="grid min-h-svh place-items-center p-6"><div className="max-w-sm text-center"><h1 className="text-xl font-semibold">Meja tidak tersedia</h1><p className="mt-2 text-sm text-muted-foreground">{error}</p></div></main>;
+  if (error && !catalog) return <main className="grid min-h-svh place-items-center p-6"><div className="max-w-sm text-center"><h1 className="text-xl font-semibold">Meja tidak tersedia</h1><p role="alert" className="mt-2 text-sm text-muted-foreground">{error}</p></div></main>;
   if (!catalog) return null;
 
   return <main className="min-h-svh bg-background pb-28">
@@ -157,7 +189,7 @@ export function CustomerOrdering({ tableCode }: { tableCode: string }) {
     <div className="sticky top-0 z-10 border-b bg-background/95 backdrop-blur"><nav aria-label="Kategori menu" className="mx-auto flex max-w-5xl gap-2 overflow-x-auto px-4 py-3">{catalog.categories.map((category) => <Button key={category.id} variant={activeCategory === category.id ? "default" : "outline"} onClick={() => { setActiveCategory(category.id); document.getElementById(`category-${category.id}`)?.scrollIntoView({ behavior: "smooth", block: "start" }); }} className="shrink-0 rounded-full">{category.name}</Button>)}</nav></div>
     <div className="mx-auto max-w-5xl px-4 py-5">
       {!catalog.categories.length && <Card><CardContent className="p-8 text-center text-sm text-muted-foreground">Menu belum tersedia.</CardContent></Card>}
-      {catalog.categories.map((category) => <section id={`category-${category.id}`} key={category.id} className="mb-8 scroll-mt-20"><h2 className="mb-3 text-lg font-semibold">{category.name}</h2>{category.menus.length ? <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">{category.menus.map((menu) => <Button variant="ghost" disabled={!isOpen} key={menu.id} onClick={() => openMenu(menu)} className="h-auto min-w-0 flex-col items-stretch overflow-hidden rounded-xl border bg-card p-0 text-left whitespace-normal shadow-none transition hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-70">{menu.imageUrl ? <img src={menu.imageUrl} alt="" className="aspect-square w-full object-cover" /> : <div className="grid aspect-square place-items-center bg-secondary text-4xl text-muted-foreground">🍽</div>}<div className="p-3"><h3 className="line-clamp-2 min-h-10 text-sm font-medium">{menu.name}</h3><p className="mt-1 text-sm font-semibold">{money(menu.price)}</p>{(menu.configuration.variants.length + menu.configuration.addons.length > 0) && <p className="mt-1 text-xs text-muted-foreground">Dapat disesuaikan</p>}</div></Button>)}</div> : <Card><CardContent className="p-5 text-sm text-muted-foreground">Belum ada menu dalam kategori ini.</CardContent></Card>}</section>)}
+      {catalog.categories.map((category) => <section id={`category-${category.id}`} key={category.id} className="mb-8 scroll-mt-20"><h2 className="mb-3 text-lg font-semibold">{category.name}</h2>{category.menus.length ? <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">{category.menus.map((menu) => <Button variant="ghost" disabled={!isOpen} key={menu.id} onClick={() => openMenu(menu)} className="h-auto min-w-0 flex-col items-stretch overflow-hidden rounded-xl border bg-card p-0 text-left whitespace-normal shadow-none transition hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-70">{menu.imageUrl ? <Image src={menu.imageUrl} alt="" width={500} height={500} unoptimized className="aspect-square w-full object-cover" /> : <div className="grid aspect-square place-items-center bg-secondary text-4xl text-muted-foreground">🍽</div>}<div className="p-3"><h3 className="line-clamp-2 min-h-10 text-sm font-medium">{menu.name}</h3><p className="mt-1 text-sm font-semibold">{money(menu.price)}</p>{(menu.configuration.variants.length + menu.configuration.addons.length > 0) && <p className="mt-1 text-xs text-muted-foreground">Dapat disesuaikan</p>}</div></Button>)}</div> : <Card><CardContent className="p-5 text-sm text-muted-foreground">Belum ada menu dalam kategori ini.</CardContent></Card>}</section>)}
     </div>
 
     <Button onClick={() => setShowCart(true)} className="fixed inset-x-4 bottom-4 z-20 mx-auto flex h-auto max-w-lg items-center justify-between px-5 py-4 text-left shadow-lg"><span><strong>Keranjang</strong><span className="ml-2 text-sm text-primary-foreground/80">{cartCount} item</span></span><strong>{money(cartTotal)}</strong></Button>
@@ -165,7 +197,7 @@ export function CustomerOrdering({ tableCode }: { tableCode: string }) {
     <Dialog open={selectedMenu !== null} onOpenChange={(open) => { if (!open) setSelectedMenu(null); }}>
       {selectedMenu && <DialogContent className="max-h-[92vh] max-w-xl overflow-y-auto">
         <DialogHeader><DialogTitle>{selectedMenu.name}</DialogTitle><DialogDescription>{selectedMenu.description || `Harga dasar ${money(selectedMenu.price)}`}</DialogDescription></DialogHeader>
-        {selectedMenu.imageUrl && <img src={selectedMenu.imageUrl} alt="" className="aspect-square max-h-64 w-full rounded-lg object-cover" />}
+        {selectedMenu.imageUrl && <Image src={selectedMenu.imageUrl} alt="" width={600} height={600} unoptimized className="aspect-square max-h-64 w-full rounded-lg object-cover" />}
         <p className="font-semibold">Harga dasar {money(selectedMenu.price)}</p>
         {selectedMenu.configuration.variants.map((group, groupIndex) => <fieldset key={group.id ?? groupIndex} className="space-y-3"><legend className="font-medium">{group.name}{group.required ? <span className="ml-1 text-destructive">*</span> : <span className="ml-1 text-xs text-muted-foreground">(opsional)</span>}</legend><RadioGroup value={group.id ? variantSelections[group.id] ?? "" : ""} onValueChange={(optionId) => { if (group.id) setVariantSelections((current) => ({ ...current, [group.id as string]: optionId })); }} className="space-y-2">{group.options.map((option, optionIndex) => { const id = `variant-${group.id ?? groupIndex}-${option.id ?? optionIndex}`; return <div key={option.id ?? optionIndex} className="flex items-center gap-3 rounded-lg border p-3 text-sm"><RadioGroupItem id={id} value={option.id ?? ""} disabled={!option.id || !option.isActive} /><Label htmlFor={id} className="flex flex-1 cursor-pointer items-center justify-between gap-2 font-normal"><span>{option.name}</span><span>{option.pricingMode === "OVERRIDE" ? `Harga ${money(option.priceValue)}` : option.priceValue ? `+${money(option.priceValue)}` : "Tanpa biaya"}</span></Label></div>; })}</RadioGroup></fieldset>)}
         {selectedMenu.configuration.addons.map((group, groupIndex) => { const selection = group.id ? addonSelections[group.id] ?? {} : {}; return <fieldset key={group.id ?? groupIndex} className="space-y-3"><legend className="font-medium">{group.name} <span className="text-xs text-muted-foreground">(pilih {group.minSelect}–{group.maxSelect})</span></legend><div className="space-y-2">{group.options.map((option, optionIndex) => { const count = option.id ? selection[option.id] ?? 0 : 0; const selectedCount = Object.values(selection).filter((value) => value > 0).length; return <div key={option.id ?? optionIndex} className="flex items-center gap-3 rounded-lg border p-3 text-sm"><span className="flex-1">{option.name}<span className="ml-2 text-muted-foreground">+{money(option.unitPrice)} / tambahan</span></span><Button type="button" variant="outline" size="icon" aria-label={`Kurangi ${option.name}`} disabled={!count} onClick={() => { if (!group.id || !option.id) return; const next = { ...selection }; if (count <= 1) delete next[option.id]; else next[option.id] = count - 1; setAddonSelections({ ...addonSelections, [group.id]: next }); }}>−</Button><span className="w-5 text-center">{count}</span><Button type="button" variant="outline" size="icon" aria-label={`Tambah ${option.name}`} disabled={!group.id || !option.id || (count === 0 && selectedCount >= group.maxSelect) || count >= 99} onClick={() => { if (!group.id || !option.id) return; setAddonSelections({ ...addonSelections, [group.id]: { ...selection, [option.id]: count + 1 } }); }}>+</Button></div>; })}</div></fieldset>; })}

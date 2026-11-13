@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -18,6 +18,7 @@ export function TablesManager({ initialTables }: { initialTables: DiningTable[] 
   const [editingTable, setEditingTable] = useState<DiningTable | null>(null);
   const [editingNumber, setEditingNumber] = useState("");
   const [tableToDeactivate, setTableToDeactivate] = useState<DiningTable | null>(null);
+  const [pending, setPending] = useState(false);
 
   async function load() {
     const response = await fetch("/api/v1/admin/tables", { cache: "no-store" });
@@ -27,6 +28,8 @@ export function TablesManager({ initialTables }: { initialTables: DiningTable[] 
   }
 
   async function mutate(url: string, method: string, body?: unknown) {
+    if (pending) return false;
+    setPending(true);
     try {
       const response = await fetch(url, {
         method,
@@ -44,6 +47,8 @@ export function TablesManager({ initialTables }: { initialTables: DiningTable[] 
     } catch {
       toast.error("Terjadi kesalahan saat menghubungi server.");
       return false;
+    } finally {
+      setPending(false);
     }
   }
 
@@ -60,13 +65,13 @@ export function TablesManager({ initialTables }: { initialTables: DiningTable[] 
   }
 
   return (
-    <div className="mt-6 space-y-4">
+    <div aria-busy={pending || undefined} className="mt-6 space-y-4">
       <form className="flex flex-wrap items-end gap-3" onSubmit={addTable}>
         <div className="w-full max-w-xs space-y-2">
           <Label htmlFor="new-table-number">Nomor meja</Label>
           <Input id="new-table-number" type="number" min="1" required value={number} onChange={(event) => setNumber(event.target.value)} />
         </div>
-        <Button type="submit">Tambah meja</Button>
+        <Button type="submit" loading={pending}>Tambah meja</Button>
         <Button type="button" variant="outline" onClick={() => window.open("/api/v1/admin/tables/qr-pdf", "_blank", "noopener,noreferrer")}>Unduh semua QR (PDF)</Button>
       </form>
 
@@ -97,7 +102,7 @@ export function TablesManager({ initialTables }: { initialTables: DiningTable[] 
                         <Button size="sm" variant="ghost" onClick={() => { setEditingTable(table); setEditingNumber(String(table.table_number)); }}>Ubah nomor</Button>
                         <Button size="sm" variant="destructive" onClick={() => setTableToDeactivate(table)}>Nonaktifkan</Button>
                         <Button size="sm" variant="ghost" onClick={() => window.open(`/api/v1/admin/tables/${table.id}/qr`, "_blank", "noopener,noreferrer")}>Unduh QR</Button>
-                      </> : <Button size="sm" variant="outline" onClick={() => void mutate(`/api/v1/admin/tables/${table.id}`, "PATCH", { isActive: true })}>Aktifkan</Button>}
+                      </> : <Button size="sm" variant="outline" loading={pending} onClick={() => void mutate(`/api/v1/admin/tables/${table.id}`, "PATCH", { isActive: true })}>Aktifkan</Button>}
                     </div>
                   </td>
                 </tr>
@@ -120,7 +125,7 @@ export function TablesManager({ initialTables }: { initialTables: DiningTable[] 
           </form>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setEditingTable(null)}>Batal</Button>
-            <Button type="submit" form="edit-table-form">Simpan</Button>
+            <Button type="submit" form="edit-table-form" loading={pending}>Simpan</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -133,16 +138,19 @@ export function TablesManager({ initialTables }: { initialTables: DiningTable[] 
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Batal</AlertDialogCancel>
-            <AlertDialogAction
+            <Button
               variant="destructive"
               onClick={() => {
                 const table = tableToDeactivate;
-                setTableToDeactivate(null);
-                if (table) void mutate(`/api/v1/admin/tables/${table.id}`, "DELETE");
+                if (table) {
+                  void mutate(`/api/v1/admin/tables/${table.id}`, "DELETE")
+                    .then((saved) => { if (saved) setTableToDeactivate(null); });
+                }
               }}
+              loading={pending}
             >
               Nonaktifkan
-            </AlertDialogAction>
+            </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
