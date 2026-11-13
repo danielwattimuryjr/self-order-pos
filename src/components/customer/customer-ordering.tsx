@@ -22,6 +22,8 @@ type Catalog = { table: { tableNumber: number }; session: { id: string; expiresA
 type CartLine = MenuChoice & { key: string; menuId: string; menuName: string; quantity: number; note: string; unitPrice: number; needsAcceptance: boolean; unavailable: string | null; lineNotice: string | null; choiceLabels: string[] };
 type CartState = { lines: CartLine[]; orderNote: string };
 const emptyCart: CartState = { lines: [], orderNote: "" };
+type VoucherPreview = { code: string; name: string; discountAmount: number; eligibleSubtotal: number; totalAmount: number; cartFingerprint: string };
+type CreatedOrder = { id: string; orderNumber: string; status: "PENDING_PAYMENT"; totalAmount: number; expiresAt: string; accessToken: string };
 const money = (amount: number) => new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(amount);
 
 export function CustomerOrdering({ tableCode }: { tableCode: string }) {
@@ -40,6 +42,13 @@ export function CustomerOrdering({ tableCode }: { tableCode: string }) {
   const [notice, setNotice] = useState("");
   const [sessionExpired, setSessionExpired] = useState(false);
   const [cartConfirmation, setCartConfirmation] = useState<{ kind: "line"; line: CartLine } | { kind: "clear" } | null>(null);
+  const [voucherCode, setVoucherCode] = useState("");
+  const [voucherPreview, setVoucherPreview] = useState<VoucherPreview | null>(null);
+  const [validatingVoucher, setValidatingVoucher] = useState(false);
+  const [customerName, setCustomerName] = useState("");
+  const [receiptEmail, setReceiptEmail] = useState("");
+  const [submittingOrder, setSubmittingOrder] = useState(false);
+  const [createdOrder, setCreatedOrder] = useState<CreatedOrder | null>(null);
 
   const loadCatalog = useCallback(async () => {
     const storageSessionKey = `qr-order-session:${tableCode}`;
@@ -53,6 +62,12 @@ export function CustomerOrdering({ tableCode }: { tableCode: string }) {
     }
     const next = result.data as Catalog;
     sessionStorage.setItem(storageSessionKey, next.session.id);
+    try {
+      const savedOrder = sessionStorage.getItem(`qr-order-created:${next.session.id}`);
+      if (savedOrder) setCreatedOrder(JSON.parse(savedOrder) as CreatedOrder);
+    } catch {
+      sessionStorage.removeItem(`qr-order-created:${next.session.id}`);
+    }
     setSessionExpired(false);
     setCatalog(next);
     setActiveCategory((current) => current && next.categories.some((category) => category.id === current) ? current : next.categories[0]?.id ?? "");
@@ -113,7 +128,73 @@ export function CustomerOrdering({ tableCode }: { tableCode: string }) {
 
   const cartCount = cart.lines.reduce((sum, line) => sum + line.quantity, 0);
   const cartTotal = cart.lines.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0);
+  const cartFingerprint = JSON.stringify(cart.lines.map(({ menuId, quantity, note, variantSelections, addonSelections }) => ({ menuId, quantity, note, variantSelections, addonSelections })));
+  const currentVoucher = voucherPreview?.cartFingerprint === cartFingerprint ? voucherPreview : null;
+  const orderTotal = cartTotal - (currentVoucher?.discountAmount ?? 0);
   const isOpen = catalog?.operatingStatus.status === "OPEN";
+
+  async function applyVoucher() {
+    if (!catalog || !voucherCode.trim() || !cart.lines.length) return;
+    setValidatingVoucher(true);
+    try {
+      const response = await fetch("/api/v1/vouchers/validate", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tableCode, sessionId: catalog.session.id, code: voucherCode,
+          items: cart.lines.map(({ menuId, quantity, note, variantSelections, addonSelections }) => ({ menuId, quantity, note, variantSelections, addonSelections })),
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.message ?? "Voucher belum dapat diperiksa.");
+      if (!result.data.valid) { setVoucherPreview(null); toast.error(result.data.reason); return; }
+      setVoucherPreview({ ...result.data, cartFingerprint });
+      toast.success("Voucher berhasil diterapkan.");
+    } catch (voucherError) { toast.error(voucherError instanceof Error ? voucherError.message : "Voucher belum dapat diperiksa."); }
+    finally { setValidatingVoucher(false); }
+  }
+
+  async function createOrder() {
+    if (!catalog || !cart.lines.length || !isOpen || submittingOrder) return;
+    if (cart.lines.some((line) => line.unavailable || line.needsAcceptance)) {
+      toast.error("Periksa menu yang tidak tersedia atau setujui perubahan harga sebelum checkout."); return;
+    }
+    if (voucherCode.trim() && !currentVoucher) {
+      toast.error("Periksa kembali voucher setelah perubahan keranjang."); return;
+    }
+    setSubmittingOrder(true);
+    try {
+      const pendingKey = `qr-order-pending:${catalog.session.id}:${cartFingerprint}`;
+      let pending: { idempotencyKey: string; accessToken: string } | null = null;
+      try { pending = JSON.parse(sessionStorage.getItem(pendingKey) ?? "null") as typeof pending; } catch { pending = null; }
+      if (!pending) {
+        const bytes = crypto.getRandomValues(new Uint8Array(32));
+        const accessToken = btoa(String.fromCharCode(...bytes)).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
+        pending = { idempotencyKey: crypto.randomUUID(), accessToken };
+        sessionStorage.setItem(pendingKey, JSON.stringify(pending));
+      }
+      const response = await fetch(`/api/v1/sessions/${encodeURIComponent(catalog.session.id)}/orders`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tableCode, idempotencyKey: pending.idempotencyKey, accessToken: pending.accessToken,
+          customerName, receiptEmail: receiptEmail.trim() || null,
+          orderNotes: cart.orderNote,
+          voucherCode: currentVoucher?.code ?? null,
+          items: cart.lines.map(({ menuId, quantity, note, variantSelections, addonSelections }) => ({ menuId, quantity, note, variantSelections, addonSelections })),
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.message ?? "Pesanan belum dapat dibuat.");
+      const order = result.data as CreatedOrder;
+      setCreatedOrder(order);
+      sessionStorage.setItem(`qr-order-created:${catalog.session.id}`, JSON.stringify(order));
+      sessionStorage.removeItem(pendingKey);
+      setCart({ ...emptyCart });
+      setVoucherCode(""); setVoucherPreview(null);
+      localStorage.removeItem(storageKey);
+      toast.success("Pesanan dibuat dan menunggu pembayaran.");
+    } catch (orderError) { toast.error(orderError instanceof Error ? orderError.message : "Pesanan belum dapat dibuat."); }
+    finally { setSubmittingOrder(false); }
+  }
 
   function openMenu(menu: Menu) {
     setSelectedMenu(menu); setVariantSelections({}); setAddonSelections({}); setItemNote(""); setQuantity(1);
@@ -209,7 +290,8 @@ export function CustomerOrdering({ tableCode }: { tableCode: string }) {
 
     <Dialog open={showCart} onOpenChange={setShowCart}>
       <DialogContent className="max-h-[92vh] max-w-xl overflow-y-auto">
-        <DialogHeader><DialogTitle>Keranjang</DialogTitle><DialogDescription>{cartCount} item · {money(cartTotal)}</DialogDescription></DialogHeader>
+        <DialogHeader><DialogTitle>Keranjang</DialogTitle><DialogDescription>{cartCount} item · {money(orderTotal)} termasuk diskon voucher yang masih berlaku</DialogDescription></DialogHeader>
+        {createdOrder && <Card className="border-success/40 bg-success-soft"><CardContent className="space-y-1 p-4"><p className="font-semibold text-success">Pesanan berhasil dibuat</p><p className="text-sm">Nomor pesanan <strong>{createdOrder.orderNumber}</strong></p><p className="text-sm">Status: menunggu pembayaran · Total {money(createdOrder.totalAmount)}</p><p className="text-xs text-muted-foreground">Batas pembayaran {new Date(createdOrder.expiresAt).toLocaleTimeString("id-ID", { timeZone: "Asia/Jakarta", hour: "2-digit", minute: "2-digit" })} WIB. QRIS akan tersedia pada langkah pembayaran.</p></CardContent></Card>}
         {!cart.lines.length && <Card><CardContent className="p-6 text-center text-sm text-muted-foreground">Keranjang masih kosong.</CardContent></Card>}
         <div className="space-y-3">{cart.lines.map((line) => <Card key={line.key}><CardContent className="p-3"><div className="flex justify-between gap-3"><div><h3 className="font-medium">{line.menuName}</h3>{line.choiceLabels.map((label) => <p key={label} className="text-xs text-muted-foreground">{label}</p>)}{line.note && <p className="mt-1 text-xs text-muted-foreground">Catatan: {line.note}</p>}</div><strong className="whitespace-nowrap text-sm">{money(line.unitPrice * line.quantity)}</strong></div>
           {line.unavailable && <p role="alert" className="mt-2 text-sm text-destructive">{line.unavailable}</p>}
@@ -218,7 +300,14 @@ export function CustomerOrdering({ tableCode }: { tableCode: string }) {
           <div className="mt-3 flex items-center gap-3"><Button variant="outline" size="icon" aria-label="Kurangi jumlah" onClick={() => adjustLine(line, -1)}>−</Button><span>{line.quantity}</span><Button variant="outline" size="icon" aria-label="Tambah jumlah" disabled={line.quantity >= 99} onClick={() => adjustLine(line, 1)}>+</Button><Button variant="destructive" size="sm" className="ml-auto" onClick={() => setCartConfirmation({ kind: "line", line })}>Hapus</Button></div>
         </CardContent></Card>)}</div>
         <div className="space-y-2"><Label htmlFor="order-note">Catatan pesanan (opsional)</Label><Textarea id="order-note" maxLength={1000} rows={2} value={cart.orderNote} onChange={(event) => setCart({ ...cart, orderNote: event.target.value })} /></div>
-        {cart.lines.length > 0 && <><div className="flex justify-between border-t pt-3 font-semibold"><span>Total sementara</span><span>{money(cartTotal)}</span></div><Button variant="ghost" className="text-destructive" onClick={() => setCartConfirmation({ kind: "clear" })}>Kosongkan keranjang</Button><Button variant="secondary" disabled className="w-full">Lanjut ke checkout — tersedia pada fase berikutnya</Button><p className="text-center text-xs text-muted-foreground">Pesanan online hanya dapat dibuat setelah validasi checkout server tersedia.</p></>}
+        {cart.lines.length > 0 && <>
+          <div className="space-y-2 rounded-lg border p-3"><Label htmlFor="voucher-code">Kode voucher</Label><div className="flex gap-2"><Input id="voucher-code" value={voucherCode} onChange={(event) => { setVoucherCode(event.target.value.toUpperCase()); setVoucherPreview(null); }} maxLength={40} autoCapitalize="characters" /><Button type="button" variant="outline" disabled={validatingVoucher || !voucherCode.trim()} onClick={() => void applyVoucher()}>{validatingVoucher ? "Memeriksa…" : "Terapkan"}</Button></div>{currentVoucher && <div role="status" className="flex items-center justify-between gap-2 text-sm"><span>{currentVoucher.name}: potongan {money(currentVoucher.discountAmount)}</span><Button type="button" variant="ghost" size="sm" onClick={() => { setVoucherCode(""); setVoucherPreview(null); }}>Hapus voucher</Button></div>}{voucherPreview && !currentVoucher && <p className="text-xs text-warning">Keranjang berubah. Terapkan ulang voucher sebelum membuat pesanan.</p>}</div>
+          <div className="grid gap-3 sm:grid-cols-2"><div className="space-y-2"><Label htmlFor="customer-name">Nama pelanggan (opsional)</Label><Input id="customer-name" maxLength={120} value={customerName} onChange={(event) => setCustomerName(event.target.value)} /></div><div className="space-y-2"><Label htmlFor="receipt-email">Email struk (opsional)</Label><Input id="receipt-email" type="email" maxLength={254} value={receiptEmail} onChange={(event) => setReceiptEmail(event.target.value)} /><p className="text-xs text-muted-foreground">Digunakan untuk mengirim struk setelah pembayaran.</p></div></div>
+          <div className="space-y-2 border-t pt-3 text-sm"><div className="flex justify-between"><span>Subtotal</span><span>{money(cartTotal)}</span></div>{currentVoucher && <div className="flex justify-between text-success"><span>Diskon voucher</span><span>−{money(currentVoucher.discountAmount)}</span></div>}<div className="flex justify-between pt-1 text-base font-semibold"><span>Total</span><span>{money(orderTotal)}</span></div></div>
+          <Button variant="ghost" className="text-destructive" onClick={() => setCartConfirmation({ kind: "clear" })}>Kosongkan keranjang</Button>
+          <Button type="button" className="w-full" disabled={!isOpen || submittingOrder || cart.lines.some((line) => line.unavailable || line.needsAcceptance) || (Boolean(voucherCode.trim()) && !currentVoucher)} onClick={() => void createOrder()}>{submittingOrder ? "Membuat pesanan…" : "Buat pesanan"}</Button>
+          <p className="text-center text-xs text-muted-foreground">Pesanan akan divalidasi dan dihitung ulang oleh server. Pembayaran QRIS dilanjutkan setelah order dibuat.</p>
+        </>}
       </DialogContent>
     </Dialog>
 

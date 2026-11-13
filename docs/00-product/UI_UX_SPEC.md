@@ -28,6 +28,7 @@
 - Price change notice and acceptance control.
 - Voucher input and remove action.
 - Subtotal, discount, total.
+- Checkout collects optional customer name, order note, and receipt email; creating an order shows its order number, `PENDING_PAYMENT` status, total, and 15-minute payment deadline. QRIS/payment attempt UI is Phase 5.
 - Empty cart confirmation; item removal confirmation at quantity zero.
 - Checkout CTA disabled when restaurant closed, session invalid, or invalid cart items remain.
 

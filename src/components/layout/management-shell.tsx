@@ -10,6 +10,7 @@ import {
   LogOut,
   SlidersHorizontal,
   Table2,
+  TicketPercent,
   UserRound,
   UtensilsCrossed,
 } from "lucide-react";
@@ -40,6 +41,7 @@ const adminLinks: NavigationLink[] = [
   { href: "/admin/settings", label: "Jam Operasional", icon: Clock3 },
   { href: "/admin/catalog", label: "Kategori & Menu", icon: UtensilsCrossed },
   { href: "/admin/templates", label: "Template Menu", icon: SlidersHorizontal },
+  { href: "/admin/vouchers", label: "Voucher", icon: TicketPercent },
 ];
 
 const staffLinks: NavigationLink[] = [

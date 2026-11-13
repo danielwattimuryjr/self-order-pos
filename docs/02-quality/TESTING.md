@@ -35,6 +35,7 @@
 - Paid consumes reservation; cancel/failure/expiry releases it.
 - Category-scoped minimum and discount are calculated from eligible subtotal only.
 - Historical order retains voucher snapshot after voucher edit/deactivation.
+- Phase 4 SQL smoke test verifies server-side totals/snapshots, reservation/release/consumption idempotency, and quota exhaustion.
 
 ### Menu and cart
 - Category inactive hides its menus without mutating menu status.

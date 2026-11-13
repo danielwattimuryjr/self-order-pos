@@ -33,22 +33,24 @@ Use UUID primary keys, `timestamptz` for instants, `NUMERIC(precision,0)` or int
 - No FK from menu configuration to template. Applying a template copies values into menu-owned groups/options.
 
 ### Vouchers
-- `vouchers`: code unique normalized, name, discount_type (`PERCENT|FIXED`), discount_value, min_transaction, max_discount nullable, quota nullable, used_count, starts_at, ends_at, starts_time/ends_time or equivalent WIB schedule fields, is_active, timestamps.
+- `vouchers`: unique normalized `code` (trim + uppercase), name, discount_type (`PERCENT|FIXED`), discount_value, min_transaction, max_discount nullable, quota nullable, used_count, inclusive `starts_on`/`ends_on` calendar dates, daily `starts_time`/`ends_time` in WIB, is_active, actor IDs, timestamps. Daily time windows may cross midnight; start is inclusive and end is exclusive.
 - `voucher_category_scopes`: voucher_id/category_id.
-- `voucher_reservations`: voucher_id/order_id unique, reserved_until, status (`RESERVED|CONSUMED|RELEASED`), timestamps.
+- `voucher_reservations`: voucher_id/order_id unique, reserved_until, status (`RESERVED|CONSUMED|RELEASED`), timestamps. An elapsed `reserved_until` does not release quota by itself; order/payment state must first be verified.
 - `voucher_redemptions`: voucher_id/order_id unique, redeemed_at, discount_snapshot.
 
 ### Orders and payments
 - `operational_sequences`: operational_date primary key, last_sequence.
-- `orders`: order_number unique, table_id, table_number_snapshot, session_id, customer_name nullable, order_notes nullable, order_status, payment_status, subtotal, discount_amount, total_amount, voucher_id nullable, voucher_snapshot JSONB, access_token_hash unique, created_at, expires_at, paid_at, cancelled_at, cancellation_reason, operational_date.
-- `order_items`: order_id, menu_id nullable, menu_name_snapshot, category_name_snapshot, base_price_snapshot, unit_price_snapshot, quantity, item_note, variant_snapshot JSONB, addon_snapshot JSONB, line_total.
+- `operational_sequences`: operational_date primary key, last_sequence; update and order insertion occur in one transaction.
+- `orders`: order_number unique (`ORD-DDMMYYNNN`, sequence expands above 999), unique `(session_id, idempotency_key)`, table_id, table_number_snapshot, session_id, customer_name nullable, receipt_email nullable, order_notes, order_status, payment_status, subtotal, discount_amount, total_amount, voucher_id nullable, voucher_snapshot JSONB, unique SHA-256 `access_token_hash`, `access_token_revoked_at`, operational_date, created_at, expires_at, paid_at, cancelled_at, cancellation_reason. Phase 4 creates orders with `PENDING_PAYMENT` and a 15-minute deadline. The customer creates and retains the idempotency key and raw high-entropy access token for retry; only the token hash is stored server-side.
+- `order_items`: order_id, menu_id nullable, menu_name_snapshot, category_name_snapshot, menu_description_snapshot, base_price_snapshot, unit_price_snapshot, quantity, item_note, variant_snapshot JSONB, addon_snapshot JSONB, line_total.
+- Checkout locks the active menu/category rows while snapshotting. Variant/add-on configuration writes lock the parent menu so checkout cannot mix catalog versions during concurrent Admin edits.
 - `payments`: order_id, attempt_number, provider, provider_order_id, provider_transaction_id, method, status, amount, qr_payload/qr_url, expires_at, paid_at, provider_response_safe JSONB, idempotency_key, timestamps. Unique provider transaction/event constraints as appropriate.
 - `payment_webhook_events`: provider, event_key unique, payload_hash, received_at, processed_at, processing_status, safe_error.
 
 ### Kitchen and receipt
 - `kitchen_tickets`: order_id unique, paid_at, operational_date, ticket_payload_snapshot JSONB, created_at. Active/history determined by operational close/history archive state or explicit `archived_at`.
 - `kitchen_ticket_reads`: ticket_id, staff_profile_id, first_viewed_at; unique(ticket_id, staff_profile_id). Per-account BARU marker.
-- `receipts`: order_id unique, receipt_token_hash unique, email_status, email_address nullable, email_attempt_count, email_sent_at, last_email_error, token_revoked_at, created_at.
+- `receipts`: order_id unique, email_status, email_address nullable, email_attempt_count, email_sent_at, last_email_error, created_at. The per-order customer access token is stored only as `orders.access_token_hash`; do not create a second receipt token hash.
 - No production `print_jobs` in V1. Do not implement physical printer pipeline.
 
 ## 2. Status model

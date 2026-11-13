@@ -22,7 +22,7 @@
 ## 3. Customer order access
 
 - Generate cryptographically random per-order token (high entropy).
-- Store only token hash; show raw token only to the customer once as URL path/query secret.
+- Store only the token hash; return the raw token once in the order-creation response for the customer flow to use as an access proof/URL secret. Never persist or log the raw token.
 - Never use order number, table code, or session ID as authorization secret.
 - Table QR codes use random UUIDv4 values to reduce casual guessing, but possession of the QR URL is not proof of authorization or physical presence.
 - Rate limit token routes; use constant-time hash comparison where applicable.
@@ -46,6 +46,7 @@
 - Sanitize rendered user text; defend against XSS.
 - Validate upload MIME/type/size; do not trust filename extension.
 - Public endpoint rate limits per IP and relevant table/order token.
+- Voucher validation and order creation use an atomic limit of 60 requests per minute per source IP and table code.
 - Public catalog requests are limited to 60 per minute per client IP and per table code. The rate-limit key stores only a SHA-256 fingerprint; a server-only service-role client calls the atomic database limiter and session resolver. Do not expose that key in client code.
 - Direct client writes to menus and variant/add-on configuration are revoked; Admin mutations go through RPCs that verify the active Admin profile. Template updates use the version-checked RPC.
 - Public catalog data includes only active category/menu/configuration rows. Menu image reads are public by design; image writes and deletes require an active Admin.

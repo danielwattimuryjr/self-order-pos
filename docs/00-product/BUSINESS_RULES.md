@@ -121,16 +121,18 @@ Dokumen ini adalah sumber kebenaran aturan bisnis. Semua waktu menggunakan `Asia
 ## 9. Voucher
 
 - Satu voucher maksimum per order.
+- Kode voucher dinormalisasi dengan menghapus spasi di awal/akhir dan mengubah huruf menjadi uppercase.
 - Discount type: percentage atau fixed amount.
 - Dukung minimum transaction dan max discount cap.
-- Validity mencakup start/end date dan start/end time WIB.
+- Tanggal mulai dan akhir membatasi rentang kalender secara inklusif. Jam mulai dan akhir berlaku setiap hari di WIB; rentang jam dapat melewati tengah malam. Jam mulai inklusif dan jam akhir eksklusif.
+- Diskon persentase dibulatkan ke bawah ke rupiah penuh sebelum max discount cap diterapkan.
 - Admin status Active/Nonaktif; Active tidak berarti selalu eligible.
 - Pelanggan memasukkan kode manual pada cart/checkout; backend validasi dan mengembalikan alasan gagal.
 - Voucher dapat dibatasi ke satu/lebih kategori. Jika kategori dipilih, diskon dan minimum transaksi dihitung hanya dari subtotal item kategori eligible. Jika tidak ada kategori dipilih, berlaku ke semua kategori.
 - Max cap berlaku pada hasil diskon.
 - Admin dapat edit voucher meskipun pernah digunakan; perubahan hanya berlaku untuk order baru. Historical order menyimpan snapshot.
 - Voucher dengan usage history tidak dapat dihapus permanen; hanya dinonaktifkan. Tanpa history boleh dihapus.
-- Saat order dibuat, satu quota reservation dipegang 15 menit. Jika paid, konsumsi quota; jika gagal/cancel/expired, release. Operasi harus atomic.
+- Saat order dibuat, satu quota reservation dipegang sampai batas pembayaran 15 menit. Reservasi yang melewati waktunya tetap dihitung sampai order diverifikasi terhadap provider dan dinyatakan paid, gagal, dibatalkan, atau expired. Jika paid, konsumsi quota; jika gagal/cancel/expired, release. Operasi harus atomic dan idempotent.
 
 ## 10. Transaksi, laporan, dan waktu operasional
 
