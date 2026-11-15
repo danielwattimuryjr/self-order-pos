@@ -12,7 +12,7 @@
 ## 2. Midtrans QRIS
 
 - Server creates payment transaction; browser only displays QRIS/deeplink response safe for customer.
-- The current adapter uses Midtrans's server-side HTTP API. Keep `MIDTRANS_SERVER_KEY` server-only. `MIDTRANS_IS_PRODUCTION=false` selects the sandbox endpoint; production must be explicitly configured for a later release.
+- The current adapter uses Midtrans's server-side HTTP API. Keep `MIDTRANS_SERVER_KEY` and `MIDTRANS_SIGNATURE_SECRET_KEY` server-only. Use a Server Key for Midtrans API authorization and the separate Signature Secret Key to verify notification signatures. `MIDTRANS_IS_PRODUCTION=false` selects the sandbox endpoint; production must be explicitly configured for a later release.
 - Configure notification URL to webhook endpoint.
 - Verify signature and refetch transaction status server-side before applying a notification.
 - Midtrans dashboard URL-test notifications use a synthetic `payment_notif_test_` order ID. Verify their signature, acknowledge them without querying transaction status, and never mutate payment/order state for these probes.

@@ -6,6 +6,7 @@ const serverEnvSchema = z.object({
   RESEND_API_KEY: z.string().min(1).optional(),
   RESEND_FROM_EMAIL: z.email().optional(),
   MIDTRANS_SERVER_KEY: z.string().min(1).optional(),
+  MIDTRANS_SIGNATURE_SECRET_KEY: z.string().min(1).optional(),
   MIDTRANS_IS_PRODUCTION: z.enum(["true", "false"]).optional().default("false"),
 });
 

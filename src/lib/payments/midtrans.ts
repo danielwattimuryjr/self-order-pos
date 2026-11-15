@@ -232,6 +232,7 @@ export function verifyNotificationSignature(input: {
   grossAmount: string;
   signature: string;
 }) {
-  const { serverKey } = configuration();
-  return verifyMidtransSignature({ ...input, serverKey });
+  const signatureSecretKey = getServerEnv().MIDTRANS_SIGNATURE_SECRET_KEY;
+  if (!signatureSecretKey) throw new MidtransRequestError("MIDTRANS_NOT_CONFIGURED");
+  return verifyMidtransSignature({ ...input, signatureSecretKey });
 }
