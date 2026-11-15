@@ -6,7 +6,11 @@ import { publishPaymentStatus } from "@/lib/payments/realtime";
 import { createServiceClient } from "@/lib/supabase/service";
 
 const notificationSchema = z.object({
-  order_id: z.string().min(1).max(50),
+  // Midtrans's dashboard URL test uses a synthetic ID longer than the Core API
+  // order ID limit. It is acknowledged separately below and never persisted.
+  order_id: z.string().min(1).max(100).refine(
+    (orderId) => orderId.length <= 50 || orderId.startsWith("payment_notif_test_"),
+  ),
   transaction_id: z.string().min(1).max(100),
   transaction_status: z.string().min(1).max(30),
   status_code: z.string().regex(/^\d{3}$/),
@@ -29,6 +33,13 @@ export async function POST(request: Request) {
       grossAmount: notification.gross_amount,
       signature: notification.signature_key,
     })) return failure("INVALID_SIGNATURE", "Signature notifikasi tidak valid.", 401);
+
+    // The dashboard test payload is synthetic and has no corresponding
+    // transaction in Midtrans or this database. Verify it, acknowledge it,
+    // and leave all payment state untouched.
+    if (notification.order_id.startsWith("payment_notif_test_")) {
+      return success({ acknowledged: true }, "Notifikasi uji Midtrans diterima.");
+    }
 
     const verified = await getTransactionStatus(notification.order_id);
     if (verified.order_id !== notification.order_id || verified.transaction_id !== notification.transaction_id || verified.status_code !== notification.status_code) {
