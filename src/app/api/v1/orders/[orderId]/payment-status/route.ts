@@ -35,7 +35,6 @@ export async function GET(
     .eq("id", orderId)
     .maybeSingle();
   if (error) {
-    console.error("[payment-status] order lookup failed", { code: error.code });
     return failure(
       "PAYMENT_STATUS_UNAVAILABLE",
       "Status pesanan belum dapat diperiksa. Coba beberapa saat lagi.",

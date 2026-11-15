@@ -3,10 +3,7 @@ import { failure, success } from "@/lib/api-response";
 import { checkPublicOrderRateLimit } from "@/lib/security/public-order-rate-limit";
 import { hashOrderAccessToken } from "@/lib/security/order-access-token";
 import { createServiceClient } from "@/lib/supabase/service";
-import {
-  createQrisCharge,
-  MidtransRequestError,
-} from "@/lib/payments/midtrans";
+import { createQrisCharge } from "@/lib/payments/midtrans";
 
 const paramsSchema = z.uuid();
 const requestSchema = z.object({
@@ -40,9 +37,6 @@ export async function POST(
     .eq("id", orderId)
     .maybeSingle();
   if (orderOwnerError) {
-    console.error("[payment-attempts] order lookup failed", {
-      code: orderOwnerError.code,
-    });
     return failure(
       "PAYMENT_ATTEMPT_FAILED",
       "Pesanan belum dapat diperiksa. Coba beberapa saat lagi.",
@@ -194,22 +188,7 @@ export async function POST(
       },
       "QRIS siap dibayar.",
     );
-  } catch (error) {
-    if (error instanceof MidtransRequestError) {
-      console.error("[payment-attempts] Midtrans QRIS request failed", {
-        code: error.code,
-        httpStatus: error.httpStatus,
-        contentType: error.contentType,
-        server: error.server,
-        providerErrorCategory: error.providerErrorCategory,
-        responseBodyKeys: error.responseBodyKeys,
-        providerErrorDetail: error.providerErrorDetail,
-      });
-    } else {
-      console.error("[payment-attempts] Midtrans QRIS request failed", {
-        code: "MIDTRANS_UNEXPECTED_ERROR",
-      });
-    }
+  } catch {
     return failure(
       "PAYMENT_PROVIDER_UNAVAILABLE",
       "Layanan pembayaran belum dapat dihubungi. Coba beberapa saat lagi.",
