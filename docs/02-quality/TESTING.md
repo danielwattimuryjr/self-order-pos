@@ -46,6 +46,15 @@
 - Menu/option deactivation during cart selection is caught at checkout.
 - Menu history snapshots remain unchanged after edit/delete/deactivation.
 
+### Customer catalog search and pagination
+- Search runs through the public catalog Route Handler and matches active menu names/descriptions case-insensitively.
+- Query parameters are validated; category and search filters combine and preserve the default category/menu order.
+- Pagination returns only the requested page and accurate result metadata.
+- Inactive menu/category rows remain hidden by explicit filters and anonymous RLS.
+- Retained cart/selected menu data does not enter the visible result count and remains subject to anonymous RLS.
+- Search debounce, URL refresh, browser back/forward, error/retry, and page changes do not clear the cart.
+- Checkout continues to validate current menu availability and prices server-side.
+
 ### Template
 - Built-in templates are read-only.
 - The built-in spice, sugar, and ice templates are optional single-select groups with zero price adjustment.
@@ -57,10 +66,16 @@
 
 ### Kitchen
 - Queue FIFO by payment success time.
+- A verified settlement creates exactly one ticket and one receipt record; unpaid orders create neither.
 - Existing tickets load silently; newly arriving ticket sounds only after audio enabled.
 - BARU is per Staff account and consistent across that account's devices.
 - Connection loss shows status and reconnect performs reconciliation without duplicate/missing ticket.
 - At close, tickets move to history and all read markers clear.
+
+### Receipt email
+- A checkout email receives one automatic webhook-triggered attempt; duplicate webhooks do not automatically retry it.
+- Missing checkout email creates no email delivery offer; a failed automatic attempt can be retried manually to the original checkout address.
+- A successful delivery is idempotent and cannot be repeated for the same order.
 
 ### Access control
 - Staff cannot call Admin APIs even if UI route is manually entered.

@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
+import { LoaderCircle, Search, X } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -18,7 +19,8 @@ import { createClient } from "@/lib/supabase/client";
 
 type Menu = { id: string; categoryId: string; name: string; description: string; price: number; imageUrl: string | null; sortOrder: number; configuration: MenuConfiguration };
 type Category = { id: string; name: string; sortOrder: number; menus: Menu[] };
-type Catalog = { table: { tableNumber: number }; session: { id: string; expiresAt: string }; operatingStatus: { status: "OPEN" | "TEMPORARILY_CLOSED" | "OUTSIDE_HOURS" | "NOT_CONFIGURED"; nextOpeningAt?: string }; temporaryCloseReason: string | null; categories: Category[] };
+type Catalog = { table: { tableNumber: number }; session: { id: string; expiresAt: string }; operatingStatus: { status: "OPEN" | "TEMPORARILY_CLOSED" | "OUTSIDE_HOURS" | "NOT_CONFIGURED"; nextOpeningAt?: string }; temporaryCloseReason: string | null; categories: Category[]; retainedMenus: Menu[]; pagination: { page: number; pageSize: number; totalItems: number; totalPages: number } };
+type CatalogFilters = { search: string; category: string; page: number };
 type CartLine = MenuChoice & { key: string; menuId: string; menuName: string; quantity: number; note: string; unitPrice: number; needsAcceptance: boolean; unavailable: string | null; lineNotice: string | null; choiceLabels: string[] };
 type CartState = { lines: CartLine[]; orderNote: string };
 const emptyCart: CartState = { lines: [], orderNote: "" };
@@ -27,9 +29,37 @@ type CreatedOrder = { id: string; orderNumber: string; status: "PENDING_PAYMENT"
 type PaymentView = { qrUrl: string | null; paymentStatus: string; attemptStatus: string | null; expiresAt: string; paidAt: string | null };
 const money = (amount: number) => new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(amount);
 
-export function CustomerOrdering({ tableCode }: { tableCode: string }) {
+function syncCatalogUrl(filters: CatalogFilters, replace = false) {
+  const url = new URL(window.location.href);
+  url.searchParams.delete("search");
+  url.searchParams.delete("category");
+  url.searchParams.delete("page");
+  if (filters.search.trim()) url.searchParams.set("search", filters.search.trim());
+  if (filters.category) url.searchParams.set("category", filters.category);
+  if (filters.page > 1) url.searchParams.set("page", String(filters.page));
+  const next = `${url.pathname}${url.search}${url.hash}`;
+  const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  if (next === current) return;
+  if (replace) window.history.replaceState({}, "", next);
+  else window.history.pushState({}, "", next);
+}
+
+function readCatalogFiltersFromUrl(): CatalogFilters {
+  const params = new URLSearchParams(window.location.search);
+  const requestedPage = Number(params.get("page") ?? "1");
+  return {
+    search: params.get("search")?.trim() ?? "",
+    category: params.get("category") ?? "",
+    page: Number.isSafeInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1,
+  };
+}
+
+export function CustomerOrdering({ tableCode, initialFilters }: { tableCode: string; initialFilters: CatalogFilters }) {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
-  const [activeCategory, setActiveCategory] = useState("");
+  const [activeCategory, setActiveCategory] = useState(initialFilters.category);
+  const [searchQuery, setSearchQuery] = useState(initialFilters.search);
+  const [debouncedSearch, setDebouncedSearch] = useState(initialFilters.search);
+  const [currentPage, setCurrentPage] = useState(initialFilters.page);
   const [cart, setCart] = useState<CartState>(emptyCart);
   const [storageKey, setStorageKey] = useState("");
   const [selectedMenu, setSelectedMenu] = useState<Menu | null>(null);
@@ -39,6 +69,10 @@ export function CustomerOrdering({ tableCode }: { tableCode: string }) {
   const [quantity, setQuantity] = useState(1);
   const [showCart, setShowCart] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadingResults, setLoadingResults] = useState(false);
+  const [catalogQueryError, setCatalogQueryError] = useState("");
+  const [catalogRetry, setCatalogRetry] = useState(0);
+  const [initialRetry, setInitialRetry] = useState(0);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [sessionExpired, setSessionExpired] = useState(false);
@@ -57,13 +91,50 @@ export function CustomerOrdering({ tableCode }: { tableCode: string }) {
   const [cancelBusy, setCancelBusy] = useState(false);
   const [paymentNow, setPaymentNow] = useState(0);
   const [paymentRetry, setPaymentRetry] = useState(0);
+  const catalogRequestId = useRef(0);
+  const hasLoadedInitialCatalog = useRef(false);
+  const storageKeyRef = useRef("");
+  const retainedMenuIdsRef = useRef<string[]>([]);
+  const latestFiltersRef = useRef<CatalogFilters>(initialFilters);
 
-  const loadCatalog = useCallback(async () => {
+  useEffect(() => {
+    latestFiltersRef.current = { search: debouncedSearch, category: activeCategory, page: currentPage };
+  }, [debouncedSearch, activeCategory, currentPage]);
+
+  useEffect(() => {
+    storageKeyRef.current = storageKey;
+  }, [storageKey]);
+
+  useEffect(() => {
+    retainedMenuIdsRef.current = [...new Set([
+      ...cart.lines.map((line) => line.menuId),
+      ...(selectedMenu ? [selectedMenu.id] : []),
+    ])];
+  }, [cart.lines, selectedMenu]);
+
+  const loadCatalog = useCallback(async (filters: CatalogFilters, signal?: AbortSignal) => {
+    const requestId = ++catalogRequestId.current;
     const storageSessionKey = `qr-order-session:${tableCode}`;
     const knownSession = sessionStorage.getItem(storageSessionKey);
-    const query = knownSession ? `?sessionId=${encodeURIComponent(knownSession)}` : "";
-    const response = await fetch(`/api/v1/tables/${encodeURIComponent(tableCode)}/catalog${query}`, { cache: "no-store" });
+    const query = new URLSearchParams();
+    if (knownSession) query.set("sessionId", knownSession);
+    if (filters.search.trim()) query.set("search", filters.search.trim());
+    if (filters.category) query.set("category", filters.category);
+    if (filters.page > 1) query.set("page", String(filters.page));
+
+    let savedCartMenuIds: string[] = [];
+    if (knownSession) {
+      try {
+        const savedCart = JSON.parse(localStorage.getItem(`qr-order-cart:${tableCode}:${knownSession}`) ?? "null") as CartState | null;
+        savedCartMenuIds = savedCart?.lines.map((line) => line.menuId) ?? [];
+      } catch { savedCartMenuIds = []; }
+    }
+    const retainedMenuIds = [...new Set([...retainedMenuIdsRef.current, ...savedCartMenuIds])];
+    retainedMenuIds.forEach((menuId) => query.append("retainMenuId", menuId));
+    const queryString = query.toString();
+    const response = await fetch(`/api/v1/tables/${encodeURIComponent(tableCode)}/catalog${queryString ? `?${queryString}` : ""}`, { cache: "no-store", signal });
     const result = await response.json();
+    if (requestId !== catalogRequestId.current) return null;
     if (!response.ok) {
       if (result.error?.code === "SESSION_EXPIRED") setSessionExpired(true);
       throw new Error(result.message ?? "Meja atau katalog tidak tersedia.");
@@ -83,12 +154,26 @@ export function CustomerOrdering({ tableCode }: { tableCode: string }) {
       sessionStorage.removeItem(`qr-order-created:${next.session.id}`);
     }
     setSessionExpired(false);
+    hasLoadedInitialCatalog.current = true;
     setCatalog(next);
-    setActiveCategory((current) => current && next.categories.some((category) => category.id === current) ? current : next.categories[0]?.id ?? "");
+    if (filters.category && !next.categories.some((item) => item.id === filters.category)) {
+      setActiveCategory("");
+      setCurrentPage(1);
+      syncCatalogUrl({ search: filters.search, category: "", page: 1 }, true);
+    }
+    const lastPage = Math.max(1, next.pagination.totalPages);
+    if (filters.page > lastPage) {
+      setCurrentPage(lastPage);
+      syncCatalogUrl({ ...filters, page: lastPage }, true);
+    }
     const key = `qr-order-cart:${tableCode}:${next.session.id}`;
-    setStorageKey(key);
-    try { setCart(JSON.parse(localStorage.getItem(key) ?? "null") as CartState ?? emptyCart); } catch { setCart(emptyCart); }
+    if (storageKeyRef.current !== key) {
+      setStorageKey(key);
+      try { setCart(JSON.parse(localStorage.getItem(key) ?? "null") as CartState ?? emptyCart); } catch { setCart(emptyCart); }
+    }
     setError("");
+    setCatalogQueryError("");
+    return next;
   }, [tableCode]);
 
   useEffect(() => {
@@ -182,14 +267,19 @@ export function CustomerOrdering({ tableCode }: { tableCode: string }) {
   useEffect(() => {
     // Initial catalog state is loaded from an external API.
     let active = true;
+    hasLoadedInitialCatalog.current = false;
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    void loadCatalog().catch((loadError: unknown) => { if (active) setError(loadError instanceof Error ? loadError.message : "Katalog belum dapat dimuat."); }).finally(() => { if (active) setLoading(false); });
+    void loadCatalog(initialFilters).then((result) => {
+      if (active && result) hasLoadedInitialCatalog.current = true;
+    }).catch((loadError: unknown) => {
+      if (active) setError(loadError instanceof Error ? loadError.message : "Katalog belum dapat dimuat.");
+    }).finally(() => { if (active) setLoading(false); });
     const supabase = createClient();
     let refreshTimer: ReturnType<typeof setTimeout> | undefined;
     let connected = false;
     const scheduleRefresh = () => {
       if (refreshTimer) clearTimeout(refreshTimer);
-      refreshTimer = setTimeout(() => void loadCatalog().catch(() => setNotice("Katalog belum dapat diperbarui. Coba muat ulang halaman.")), 150);
+      refreshTimer = setTimeout(() => void loadCatalog(latestFiltersRef.current).catch(() => setNotice("Katalog belum dapat diperbarui. Coba muat ulang halaman.")), 150);
     };
     const channel = supabase.channel(`public-catalog-${tableCode}-${Math.random().toString(36).slice(2)}`)
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "catalog_change_notices" }, scheduleRefresh)
@@ -198,7 +288,41 @@ export function CustomerOrdering({ tableCode }: { tableCode: string }) {
         if (status === "SUBSCRIBED") { setNotice(""); if (connected) scheduleRefresh(); connected = true; }
       });
     return () => { active = false; if (refreshTimer) clearTimeout(refreshTimer); void supabase.removeChannel(channel); };
-  }, [loadCatalog, tableCode]);
+  }, [initialRetry, initialFilters, loadCatalog, tableCode]);
+
+  useEffect(() => {
+    const syncFromHistory = () => {
+      const filters = readCatalogFiltersFromUrl();
+      setSearchQuery(filters.search);
+      setDebouncedSearch(filters.search);
+      setActiveCategory(filters.category);
+      setCurrentPage(filters.page);
+    };
+    window.addEventListener("popstate", syncFromHistory);
+    return () => window.removeEventListener("popstate", syncFromHistory);
+  }, []);
+
+  useEffect(() => {
+    if (searchQuery.trim() === debouncedSearch) return;
+    const timer = setTimeout(() => {
+      const search = searchQuery.trim();
+      setDebouncedSearch(search);
+      setCurrentPage(1);
+      syncCatalogUrl({ search, category: activeCategory, page: 1 });
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery, debouncedSearch, activeCategory]);
+
+  useEffect(() => {
+    if (!hasLoadedInitialCatalog.current) return;
+    const controller = new AbortController();
+    setLoadingResults(true);
+    setCatalogQueryError("");
+    void loadCatalog({ search: debouncedSearch, category: activeCategory, page: currentPage }, controller.signal).catch((requestError: unknown) => {
+      if (!controller.signal.aborted) setCatalogQueryError(requestError instanceof Error ? requestError.message : "Katalog belum dapat dimuat.");
+    }).finally(() => { if (!controller.signal.aborted) setLoadingResults(false); });
+    return () => controller.abort();
+  }, [debouncedSearch, activeCategory, currentPage, catalogRetry, loadCatalog]);
 
   useEffect(() => {
     if (storageKey) localStorage.setItem(storageKey, JSON.stringify(cart));
@@ -207,13 +331,13 @@ export function CustomerOrdering({ tableCode }: { tableCode: string }) {
   useEffect(() => {
     if (!catalog) return;
     const remaining = new Date(catalog.session.expiresAt).getTime() - Date.now();
-    const timer = setTimeout(() => void loadCatalog().catch(() => undefined), Math.max(0, remaining));
+    const timer = setTimeout(() => void loadCatalog(latestFiltersRef.current).catch(() => undefined), Math.max(0, remaining));
     return () => clearTimeout(timer);
   }, [catalog, loadCatalog]);
 
   useEffect(() => {
     if (!catalog) return;
-    const menus = new Map(catalog.categories.flatMap((category) => category.menus).map((menu) => [menu.id, menu]));
+    const menus = new Map([...catalog.categories.flatMap((category) => category.menus), ...catalog.retainedMenus].map((menu) => [menu.id, menu]));
     // Reconcile persisted cart selections against the authoritative refreshed catalog.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setCart((current) => ({ ...current, lines: current.lines.map((line) => {
@@ -234,6 +358,9 @@ export function CustomerOrdering({ tableCode }: { tableCode: string }) {
   const currentVoucher = voucherPreview?.cartFingerprint === cartFingerprint ? voucherPreview : null;
   const orderTotal = cartTotal - (currentVoucher?.discountAmount ?? 0);
   const isOpen = catalog?.operatingStatus.status === "OPEN";
+  const matchingMenuCount = catalog?.pagination.totalItems ?? 0;
+  const visibleCategories = catalog?.categories.filter((category) => category.menus.length > 0 || category.id === activeCategory) ?? [];
+  const hasActiveMenuFilters = Boolean(debouncedSearch || activeCategory);
 
   async function applyVoucher() {
     if (!catalog || !voucherCode.trim() || !cart.lines.length) return;
@@ -305,7 +432,7 @@ export function CustomerOrdering({ tableCode }: { tableCode: string }) {
 
   function addToCart() {
     if (!selectedMenu || !isOpen || !catalog) return;
-    const currentMenu = catalog.categories.flatMap((category) => category.menus).find((menu) => menu.id === selectedMenu.id);
+    const currentMenu = [...catalog.categories.flatMap((category) => category.menus), ...catalog.retainedMenus].find((menu) => menu.id === selectedMenu.id);
     if (!currentMenu) { setNotice("Menu sudah tidak tersedia. Periksa katalog yang diperbarui."); setSelectedMenu(null); return; }
     const choice: MenuChoice = { variantSelections, addonSelections };
     const priced = priceForMenuChoice(currentMenu.price, currentMenu.configuration, choice);
@@ -331,6 +458,28 @@ export function CustomerOrdering({ tableCode }: { tableCode: string }) {
     if (cartConfirmation?.kind === "line") removeLine(cartConfirmation.line.key);
     else if (cartConfirmation?.kind === "clear") setCart({ ...emptyCart });
     setCartConfirmation(null);
+  }
+
+  function selectCategory(categoryId: string) {
+    const search = searchQuery.trim();
+    setActiveCategory(categoryId);
+    setCurrentPage(1);
+    setDebouncedSearch(search);
+    syncCatalogUrl({ search, category: categoryId, page: 1 });
+  }
+
+  function clearMenuFilters() {
+    setSearchQuery("");
+    setDebouncedSearch("");
+    setActiveCategory("");
+    setCurrentPage(1);
+    syncCatalogUrl({ search: "", category: "", page: 1 });
+  }
+
+  function selectCatalogPage(page: number) {
+    const nextPage = Math.max(1, Math.min(catalog?.pagination.totalPages ?? 1, page));
+    setCurrentPage(nextPage);
+    syncCatalogUrl({ search: debouncedSearch, category: activeCategory, page: nextPage });
   }
 
   if (loading) return (
@@ -362,18 +511,58 @@ export function CustomerOrdering({ tableCode }: { tableCode: string }) {
       <Skeleton aria-hidden="true" className="fixed inset-x-4 bottom-4 mx-auto h-14 max-w-lg rounded-lg" />
     </main>
   );
-  if (sessionExpired) return <main className="grid min-h-svh place-items-center p-6"><div className="max-w-sm text-center"><h1 className="text-xl font-semibold">Sesi meja berakhir</h1><p className="mt-2 text-sm text-muted-foreground">Pindai ulang QR meja untuk memulai sesi baru. Keranjang pada sesi sebelumnya tidak dipindahkan.</p><Button onClick={() => { sessionStorage.removeItem(`qr-order-session:${tableCode}`); setCatalog(null); setLoading(true); setError(""); void loadCatalog().catch((loadError: unknown) => setError(loadError instanceof Error ? loadError.message : "Meja tidak tersedia.")).finally(() => setLoading(false)); }} className="mt-4">Pindai ulang QR meja</Button></div></main>;
-  if (error && !catalog) return <main className="grid min-h-svh place-items-center p-6"><div className="max-w-sm text-center"><h1 className="text-xl font-semibold">Meja tidak tersedia</h1><p role="alert" className="mt-2 text-sm text-muted-foreground">{error}</p></div></main>;
+  if (sessionExpired) return <main className="grid min-h-svh place-items-center p-6"><div className="max-w-sm text-center"><h1 className="text-xl font-semibold">Sesi meja berakhir</h1><p className="mt-2 text-sm text-muted-foreground">Pindai ulang QR meja untuk memulai sesi baru. Keranjang pada sesi sebelumnya tidak dipindahkan.</p><Button onClick={() => { sessionStorage.removeItem(`qr-order-session:${tableCode}`); setCatalog(null); setLoading(true); setError(""); setInitialRetry((value) => value + 1); }} className="mt-4">Pindai ulang QR meja</Button></div></main>;
+  if (error && !catalog) return <main className="grid min-h-svh place-items-center p-6"><div className="max-w-sm text-center"><h1 className="text-xl font-semibold">Katalog belum dapat dimuat</h1><p role="alert" className="mt-2 text-sm text-muted-foreground">{error}</p><Button type="button" variant="outline" className="mt-4" onClick={() => { setError(""); setLoading(true); setInitialRetry((value) => value + 1); }}>Coba lagi</Button></div></main>;
   if (!catalog) return null;
 
   return <main className="min-h-svh bg-background pb-28">
     <header className="border-b bg-card px-4 py-4"><div className="mx-auto max-w-5xl"><p className="text-xs uppercase tracking-wide text-muted-foreground">QR Restaurant</p><h1 className="mt-1 text-xl font-semibold">Menu · Meja {String(catalog.table.tableNumber).padStart(2, "0")}</h1><p className="mt-1 text-xs text-muted-foreground">Sesi berakhir {new Date(catalog.session.expiresAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}</p></div></header>
     {!isOpen && <div className="border-b border-warning/30 bg-warning-soft px-4 py-3 text-sm text-warning"><div className="mx-auto max-w-5xl">{catalog.operatingStatus.status === "TEMPORARILY_CLOSED" ? `Restoran tutup sementara${catalog.temporaryCloseReason ? `: ${catalog.temporaryCloseReason}` : "."}` : catalog.operatingStatus.status === "OUTSIDE_HOURS" ? `Di luar jam operasional. Buka kembali ${catalog.operatingStatus.nextOpeningAt ? new Date(catalog.operatingStatus.nextOpeningAt).toLocaleString("id-ID", { timeZone: "Asia/Jakarta", dateStyle: "short", timeStyle: "short" }) : "sesuai jadwal"}.` : "Jam operasional belum diatur. Pemesanan belum tersedia."} Katalog tetap dapat dilihat.</div></div>}
     {notice && <p role="status" className="mx-auto max-w-5xl px-4 pt-3 text-sm text-warning">{notice}</p>}
-    <div className="sticky top-0 z-10 border-b bg-background/95 backdrop-blur"><nav aria-label="Kategori menu" className="mx-auto flex max-w-5xl gap-2 overflow-x-auto px-4 py-3">{catalog.categories.map((category) => <Button key={category.id} variant={activeCategory === category.id ? "default" : "outline"} onClick={() => { setActiveCategory(category.id); document.getElementById(`category-${category.id}`)?.scrollIntoView({ behavior: "smooth", block: "start" }); }} className="shrink-0 rounded-full">{category.name}</Button>)}</nav></div>
-    <div className="mx-auto max-w-5xl px-4 py-5">
-      {!catalog.categories.length && <Card><CardContent className="p-8 text-center text-sm text-muted-foreground">Menu belum tersedia.</CardContent></Card>}
-      {catalog.categories.map((category) => <section id={`category-${category.id}`} key={category.id} className="mb-8 scroll-mt-20"><h2 className="mb-3 text-lg font-semibold">{category.name}</h2>{category.menus.length ? <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">{category.menus.map((menu) => <Button variant="ghost" disabled={!isOpen} key={menu.id} onClick={() => openMenu(menu)} className="h-auto min-w-0 flex-col items-stretch overflow-hidden rounded-xl border bg-card p-0 text-left whitespace-normal shadow-none transition hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-70">{menu.imageUrl ? <Image src={menu.imageUrl} alt="" width={500} height={500} unoptimized className="aspect-square w-full object-cover" /> : <div className="grid aspect-square place-items-center bg-secondary text-4xl text-muted-foreground">🍽</div>}<div className="p-3"><h3 className="line-clamp-2 min-h-10 text-sm font-medium">{menu.name}</h3><p className="mt-1 text-sm font-semibold">{money(menu.price)}</p>{(menu.configuration.variants.length + menu.configuration.addons.length > 0) && <p className="mt-1 text-xs text-muted-foreground">Dapat disesuaikan</p>}</div></Button>)}</div> : <Card><CardContent className="p-5 text-sm text-muted-foreground">Belum ada menu dalam kategori ini.</CardContent></Card>}</section>)}
+    <section aria-label="Cari dan filter menu" className="mx-auto max-w-5xl px-4 pt-4">
+      <div className="relative">
+        <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          aria-label="Cari menu berdasarkan nama atau deskripsi"
+          type="text"
+          role="searchbox"
+          placeholder="Cari menu..."
+          maxLength={200}
+          value={searchQuery}
+          onChange={(event) => setSearchQuery(event.target.value)}
+          className="h-11 bg-card pl-10 pr-10"
+        />
+        {searchQuery.length > 0 && <Button type="button" variant="ghost" size="icon" aria-label="Hapus pencarian" onClick={() => setSearchQuery("")} className="absolute right-1 top-1/2 size-9 -translate-y-1/2">
+          <X aria-hidden="true" className="size-4" />
+        </Button>}
+      </div>
+      <div className="mt-3 flex items-center justify-between gap-3">
+        <p aria-live="polite" aria-atomic="true" className="flex items-center gap-2 text-sm text-muted-foreground">
+          {loadingResults && <LoaderCircle aria-hidden="true" className="size-4 animate-spin motion-reduce:animate-none" />}
+          {loadingResults ? "Memuat hasil menu…" : `${matchingMenuCount} menu ditemukan`}
+        </p>
+        {Boolean(searchQuery.trim() || activeCategory) && <Button type="button" variant="ghost" size="sm" onClick={clearMenuFilters}>
+          Hapus filter
+        </Button>}
+      </div>
+    </section>
+    <div className="sticky top-0 z-10 border-b bg-background/95 backdrop-blur">
+      <nav aria-label="Kategori menu" className="mx-auto flex max-w-5xl gap-2 overflow-x-auto px-4 py-3">
+        <Button type="button" variant={activeCategory === "" ? "default" : "outline"} aria-pressed={activeCategory === ""} onClick={() => selectCategory("")} className="shrink-0 rounded-full">Semua</Button>
+        {catalog.categories.map((category) => <Button type="button" key={category.id} variant={activeCategory === category.id ? "default" : "outline"} aria-pressed={activeCategory === category.id} onClick={() => selectCategory(category.id)} className="shrink-0 rounded-full">{category.name}</Button>)}
+      </nav>
+    </div>
+    <div className="mx-auto max-w-5xl px-4 py-5" aria-busy={loadingResults}>
+      {catalogQueryError ? <Card><CardContent className="space-y-3 p-8 text-center"><p role="alert" className="text-sm text-destructive">{catalogQueryError}</p><Button type="button" variant="outline" onClick={() => setCatalogRetry((value) => value + 1)}>Coba lagi</Button></CardContent></Card>
+        : matchingMenuCount === 0 ? <Card><CardContent className="space-y-3 p-8 text-center"><p className="text-sm text-muted-foreground">{hasActiveMenuFilters ? activeCategory && !debouncedSearch ? "Belum ada menu dalam kategori ini." : "Tidak ada menu yang cocok dengan pencarian atau filter Anda." : "Menu belum tersedia."}</p>{hasActiveMenuFilters && <Button type="button" variant="outline" onClick={clearMenuFilters}>Hapus pencarian dan filter</Button>}</CardContent></Card>
+          : visibleCategories.map((category) => <section id={`category-${category.id}`} key={category.id} className="mb-8 scroll-mt-20"><h2 className="mb-3 text-lg font-semibold">{category.name}</h2><div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">{category.menus.map((menu) => <Button variant="ghost" disabled={!isOpen} key={menu.id} onClick={() => openMenu(menu)} className="h-auto min-w-0 flex-col items-stretch overflow-hidden rounded-xl border bg-card p-0 text-left whitespace-normal shadow-none transition hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-70">{menu.imageUrl ? <Image src={menu.imageUrl} alt="" width={500} height={500} unoptimized className="aspect-square w-full object-cover" /> : <div className="grid aspect-square place-items-center bg-secondary text-4xl text-muted-foreground">🍽</div>}<div className="p-3"><h3 className="line-clamp-2 min-h-10 text-sm font-medium">{menu.name}</h3><p className="mt-1 text-sm font-semibold">{money(menu.price)}</p>{(menu.configuration.variants.length + menu.configuration.addons.length > 0) && <p className="mt-1 text-xs text-muted-foreground">Dapat disesuaikan</p>}</div></Button>)}</div></section>)}
+      {!catalogQueryError && catalog.pagination.totalPages > 1 && <nav aria-label="Halaman menu" className="flex items-center justify-center gap-2 border-t pt-4">
+        <Button type="button" variant="outline" size="sm" disabled={currentPage <= 1 || loadingResults} onClick={() => selectCatalogPage(1)}>Pertama</Button>
+        <Button type="button" variant="outline" size="sm" disabled={currentPage <= 1 || loadingResults} onClick={() => selectCatalogPage(currentPage - 1)}>Sebelumnya</Button>
+        <span aria-live="polite" className="px-2 text-sm text-muted-foreground">Halaman {currentPage} dari {catalog.pagination.totalPages}</span>
+        <Button type="button" variant="outline" size="sm" disabled={currentPage >= catalog.pagination.totalPages || loadingResults} onClick={() => selectCatalogPage(currentPage + 1)}>Berikutnya</Button>
+        <Button type="button" variant="outline" size="sm" disabled={currentPage >= catalog.pagination.totalPages || loadingResults} onClick={() => selectCatalogPage(catalog.pagination.totalPages)}>Terakhir</Button>
+      </nav>}
     </div>
 
     <Button onClick={() => setShowCart(true)} className="fixed inset-x-4 bottom-4 z-20 mx-auto flex h-auto max-w-lg items-center justify-between px-5 py-4 text-left shadow-lg"><span><strong>Keranjang</strong><span className="ml-2 text-sm text-primary-foreground/80">{cartCount} item</span></span><strong>{money(cartTotal)}</strong></Button>
@@ -396,7 +585,7 @@ export function CustomerOrdering({ tableCode }: { tableCode: string }) {
         <DialogHeader><DialogTitle>Keranjang</DialogTitle><DialogDescription>{cartCount} item · {money(orderTotal)} termasuk diskon voucher yang masih berlaku</DialogDescription></DialogHeader>
         {createdOrder && <Card className="border-primary/20"><CardContent className="space-y-3 p-4 text-center">
           <div className="text-left"><p className="font-semibold">Pembayaran · {createdOrder.orderNumber}</p><p className="text-sm text-muted-foreground">Total {money(createdOrder.totalAmount)}</p></div>
-          {paymentView?.paymentStatus === "PAID" ? <div role="status" className="rounded-lg bg-success-soft p-4 text-success"><p className="font-semibold">Pembayaran berhasil</p><p className="mt-1 text-sm">Pesanan Anda telah dikonfirmasi.</p></div>
+          {paymentView?.paymentStatus === "PAID" ? <div role="status" className="space-y-3 rounded-lg bg-success-soft p-4 text-success"><div><p className="font-semibold">Pembayaran berhasil</p><p className="mt-1 text-sm">Pesanan Anda telah dikonfirmasi.</p></div><Button asChild><a href={`/receipt/${encodeURIComponent(createdOrder.accessToken)}`}>Lihat struk</a></Button></div>
             : paymentView?.paymentStatus === "CANCELLED" || paymentView?.paymentStatus === "EXPIRED" ? <div role="status" className="rounded-lg bg-secondary p-4"><p className="font-semibold">{paymentView.paymentStatus === "CANCELLED" ? "Pesanan dibatalkan" : "Batas pembayaran berakhir"}</p></div>
               : paymentView?.qrUrl ? <><Image src={paymentView.qrUrl} alt="Kode QRIS untuk pembayaran" width={320} height={320} unoptimized className="mx-auto aspect-square w-64 rounded-lg border bg-white object-contain p-2" /><p className="text-sm">Pindai QRIS melalui aplikasi pembayaran Anda.</p><p className="text-xs text-muted-foreground">Batas pembayaran {new Date(createdOrder.expiresAt).toLocaleTimeString("id-ID", { timeZone: "Asia/Jakarta", hour: "2-digit", minute: "2-digit" })} WIB{paymentView.paymentStatus === "PENDING" ? ` · ${Math.max(0, Math.ceil((new Date(createdOrder.expiresAt).getTime() - paymentNow) / 1000))} detik tersisa` : ""}</p></>
                 : <div role="status" className="rounded-lg bg-secondary p-4"><p className="font-medium">{paymentBusy ? "Menyiapkan QRIS…" : paymentView?.attemptStatus === "FAILED" ? "Percobaan pembayaran gagal." : "Menunggu QRIS dari provider…"}</p><p className="mt-1 text-sm text-muted-foreground">Status pembayaran diperbarui otomatis.</p>{paymentView?.attemptStatus === "FAILED" && <Button className="mt-3" variant="outline" onClick={() => setPaymentRetry((count) => count + 1)}>Coba lagi</Button>}</div>}

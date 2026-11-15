@@ -10,13 +10,13 @@ Errors use appropriate HTTP status and stable error codes; never leak provider s
 
 ## Public customer endpoints
 
-- `GET /tables/{tableCode}/catalog` — resolve active table/session context and return categories, active menus, variant/add-on config, operating status. A `sessionId` query parameter validates the existing browsing session during catalog refresh; expired sessions return `409 SESSION_EXPIRED` and are not silently replaced. Do not expose internal staff data.
+- `GET /tables/{tableCode}/catalog` — resolve active table/session context and return active categories, a server-filtered page of active menus and their variant/add-on config, operating status, and `{ page, pageSize, totalItems, totalPages }` pagination metadata. Optional `search` matches menu name/description case-insensitively; `category` accepts an active category UUID; `page` is 1-based with a page size of 12. Repeated `retainMenuId` values may request active cart/selected-menu snapshots separately from the visible page so pagination does not invalidate cart state. A `sessionId` query parameter validates the existing browsing session during catalog refresh; expired sessions return `409 SESSION_EXPIRED` and are not silently replaced. Query parameters are validated and catalog reads remain subject to anonymous RLS. Do not expose internal staff data.
 - `POST /sessions/{sessionId}/orders` — body: `tableCode`, customer-generated `idempotencyKey` and `accessToken`, `items` (`menuId`, `quantity`, `note`, `variantSelections`, `addonSelections`), optional `voucherCode`, `customerName`, `receiptEmail`, and `orderNotes`. Validate session, hours, menu/category state, current prices/configuration, and voucher; calculate immutable snapshots and create a `PENDING_PAYMENT` order with a 15-minute deadline atomically. Retrying the same key and token returns the existing order. Store only the access token's SHA-256 hash.
 - `POST /orders/{orderId}/payment-attempts` — body: `tableCode`, `accessToken`, and client-generated `idempotencyKey`. Create/reuse a server-validated Midtrans QRIS attempt while the order remains payable. Return only the QR image URL, amount-derived order context, and safe status.
 - `GET /orders/{orderId}/payment-status` — provide the order token in `Authorization: Bearer …`; return order/payment status and QR URL after constant-time token-hash comparison. The UUID alone never grants access, and the token is kept out of the URL.
 - `POST /orders/{orderId}/cancel` — body: `tableCode` and `accessToken`. Verify current provider status, request provider cancellation while pending, verify again, then atomically cancel only if unpaid. A confirmed payment wins the race.
 - `GET /receipt/{token}` — token-protected receipt/confirmation.
-- `POST /receipt/{token}/email` — request one-time email send; enforce server-side one-success rule.
+- `POST /receipt/{token}/email` — manually retry a failed webhook-triggered email to the address saved at checkout; no request body or recipient changes. If checkout had no email, return a conflict and do not send.
 - `GET /receipt/{token}/pdf` — generate/download receipt PDF.
 - `POST /vouchers/validate` — body: `tableCode`, `sessionId`, normalized `code`, and current cart `items`. Recompute current prices and eligible category subtotal; return `{ valid, reason?, eligibleSubtotal?, discountAmount?, totalAmount? }`. Authoritative revalidation occurs during atomic order creation.
 
@@ -26,7 +26,7 @@ Errors use appropriate HTTP status and stable error codes; never leak provider s
 
 ## Staff endpoints
 
-- `GET /staff/kitchen/queue` — active tickets FIFO, with per-account read state.
+- `GET /staff/kitchen/queue` — active tickets FIFO, with per-account read state; reconcile overdue archive records before returning the queue.
 - `GET /staff/kitchen/history` — search/filter operational date/table/order number, server-side pagination 20.
 - `GET /staff/kitchen/tickets/{ticketId}` — read-only detail.
 - `POST /staff/kitchen/tickets/{ticketId}/read` — persist per-staff viewed marker; this changes read marker only, not order/ticket status.
