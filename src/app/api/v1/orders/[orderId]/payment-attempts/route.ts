@@ -3,7 +3,7 @@ import { failure, success } from "@/lib/api-response";
 import { checkPublicOrderRateLimit } from "@/lib/security/public-order-rate-limit";
 import { hashOrderAccessToken } from "@/lib/security/order-access-token";
 import { createServiceClient } from "@/lib/supabase/service";
-import { createQrisCharge, getTransactionStatus } from "@/lib/payments/midtrans";
+import { createQrisCharge, getTransactionStatus, qrisCodeUrl } from "@/lib/payments/midtrans";
 
 const paramsSchema = z.uuid();
 const requestSchema = z.object({
@@ -135,7 +135,9 @@ export async function POST(
       const provider = await getTransactionStatus(attempt.provider_order_id);
       const providerQrUrl = provider.actions?.find(
         (action) => action.name === "generate-qr-code",
-      )?.url;
+      )?.url ?? (provider.payment_type === "qris" && provider.transaction_id
+        ? qrisCodeUrl(provider.transaction_id)
+        : undefined);
       if (providerQrUrl && provider.transaction_id) {
         const { error: saveError } = await supabase.rpc("save_payment_qr", {
           p_payment_id: attempt.id,

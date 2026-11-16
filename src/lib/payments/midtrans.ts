@@ -111,6 +111,11 @@ function configuration() {
   };
 }
 
+export function qrisCodeUrl(transactionId: string) {
+  const { baseUrl } = configuration();
+  return `${baseUrl}/v2/qris/${encodeURIComponent(transactionId)}/qr-code`;
+}
+
 function midtransOrderTime(date: Date) {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Jakarta",
