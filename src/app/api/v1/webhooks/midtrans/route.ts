@@ -3,6 +3,7 @@ import { z } from "zod";
 import { failure, success } from "@/lib/api-response";
 import { getTransactionStatus, verifyNotificationSignature } from "@/lib/payments/midtrans";
 import { publishPaymentStatus } from "@/lib/payments/realtime";
+import { sendReceiptEmail } from "@/lib/receipts/email";
 import { createServiceClient } from "@/lib/supabase/service";
 
 const notificationSchema = z.object({
@@ -53,12 +54,15 @@ export async function POST(request: Request) {
     const eventKey = `${verified.order_id}:${verified.transaction_id}:${verified.transaction_status}:${verified.fraud_status ?? ""}:${verified.status_code}`;
     const payloadHash = createHash("sha256").update(raw).digest("hex");
     const supabase = createServiceClient();
+    const providerStatus = verified.transaction_status === "capture" && verified.fraud_status === "accept"
+      ? "settlement"
+      : verified.transaction_status;
     const { data, error } = await supabase.rpc("process_midtrans_payment_event", {
       p_event_key: eventKey,
       p_payload_hash: payloadHash,
       p_provider_order_id: verified.order_id,
       p_transaction_id: verified.transaction_id,
-      p_provider_status: verified.transaction_status === "capture" && verified.fraud_status === "accept" ? "settlement" : verified.transaction_status,
+      p_provider_status: providerStatus,
       p_amount: amount,
     });
     if (error) return failure("WEBHOOK_PROCESSING_FAILED", "Notifikasi pembayaran belum dapat diproses.", 500);
@@ -66,6 +70,9 @@ export async function POST(request: Request) {
     if (payment) {
       const { data: order } = await supabase.from("orders").select("access_token_hash").eq("id", payment.order_id).maybeSingle();
       if (order?.access_token_hash) await publishPaymentStatus(payment.order_id, order.access_token_hash);
+      if (providerStatus === "settlement") {
+        try { await sendReceiptEmail(payment.order_id, null, true); } catch { /* Email delivery must not change the verified payment result. */ }
+      }
     }
     return success(data, "Notifikasi pembayaran diproses.");
   } catch {

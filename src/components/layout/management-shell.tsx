@@ -46,7 +46,7 @@ const adminLinks: NavigationLink[] = [
 
 const staffLinks: NavigationLink[] = [
   { href: "/staff/queue", label: "Antrean Pesanan", icon: ClipboardList },
-  { href: "/staff/history", label: "Riwayat Pesanan", icon: History, disabled: true },
+  { href: "/staff/history", label: "Riwayat Pesanan", icon: History },
   { href: "/staff/profile", label: "Profil Akun", icon: UserRound },
 ];
 

@@ -79,7 +79,7 @@ Never rely on a sequence of independent client requests for financial atomicity.
 ## 6. Operational reliability
 
 - Webhook idempotency key/provider event identity.
-- Retry transient email failures with bounded exponential backoff; preserve failed state and allow user retry.
+- Record the single webhook-triggered email attempt and preserve failures for manual customer retry; duplicate webhooks must not retry email automatically.
 - Realtime reconnect + queue resync.
 - Poll payment status every 5 seconds only as fallback; stop when final.
 - Rate limit public endpoints and token-based receipt access.

@@ -40,7 +40,7 @@
 
 ### Confirmation/receipt
 - Paid badge, order number, table, payment time/method, item snapshots, discount, total.
-- Copy link, PDF download, and email retry/request when no automatic send succeeded.
+- Copy link and PDF download. Show email status and a retry action only when an address was supplied at checkout and delivery has not succeeded; never request or collect a new address on the receipt page.
 - Pesan Lagi only if session active.
 
 ## 3. Admin pages

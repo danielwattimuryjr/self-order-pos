@@ -48,8 +48,8 @@ Dokumen ini adalah sumber kebenaran aturan bisnis. Semua waktu menggunakan `Asia
 - Tidak ada customer dashboard atau order history lintas order.
 - Tombol “Pesan Lagi” kembali ke katalog pada sesi aktif; jika sesi habis, pelanggan diminta scan ulang QR.
 - Struk dapat diunduh sebagai PDF tanpa email.
-- Email opsional ditawarkan saat checkout. Setelah webhook pembayaran terverifikasi, sistem otomatis mengirim struk ke alamat yang diberikan. Jika email tidak diberikan atau pengiriman otomatis gagal, pelanggan dapat meminta/mencoba ulang pengiriman dari halaman struk.
-- Email hanya boleh memiliki satu pengiriman sukses per order. Jika gagal, pelanggan dapat retry. Setelah sukses, tombol dinonaktifkan dan alamat email tidak dapat diganti.
+- Email opsional ditawarkan saat checkout. Setelah webhook pembayaran terverifikasi, sistem mengirim satu email otomatis hanya jika alamat diberikan. Jika tidak ada alamat checkout, email tidak dikirim dan tidak ditawarkan dari halaman struk.
+- Jika pengiriman otomatis gagal, pelanggan dapat mencoba ulang ke alamat yang sama dari checkout melalui halaman struk. Email hanya boleh memiliki satu pengiriman sukses per order; setelah sukses, tombol dinonaktifkan.
 - Email failure tidak mengubah status pembayaran.
 
 ## 5. Kitchen queue dan history

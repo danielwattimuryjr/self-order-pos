@@ -25,9 +25,10 @@
 
 - Provider: Resend, selected for V1.
 - Verify sender domain and DNS before production.
-- The customer may provide an optional receipt email at checkout. A verified payment webhook triggers automatic delivery when an address exists; the receipt page supports customer request/retry if there is no successful send.
-- Enforce one successful send per order; failed attempts can retry.
-- Retry transient failures with bounded exponential backoff (up to 3 automated attempts is a recommended default); preserve failed state and allow customer retry.
+- The customer may provide an optional receipt email at checkout. A verified payment webhook makes exactly one automatic delivery attempt when an address exists. With no checkout email, no email is attempted and the receipt page does not collect an address.
+- If automatic delivery fails, the customer may manually retry to the same checkout address. Enforce one successful send per order.
+- Use a stable Resend idempotency key for each persisted attempt so an ambiguous network result can be reconciled without sending the same attempt twice.
+- Preserve failed state and allow manual customer retry. Do not automatically retry the email from duplicate webhooks.
 - Email failure never rolls back payment.
 
 ## 4. Realtime and fallback

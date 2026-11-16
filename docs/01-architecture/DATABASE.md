@@ -48,9 +48,9 @@ Use UUID primary keys, `timestamptz` for instants, `NUMERIC(precision,0)` or int
 - `payment_webhook_events`: provider, event_key unique, payload_hash, received_at, processed_at, processing_status, safe_error. Raw notification payload and credentials are not stored.
 
 ### Kitchen and receipt
-- `kitchen_tickets`: order_id unique, paid_at, operational_date, ticket_payload_snapshot JSONB, created_at. Active/history determined by operational close/history archive state or explicit `archived_at`.
+- `kitchen_tickets`: order_id unique, paid_at, operational_date, immutable ticket_payload_snapshot JSONB, archive_after, archived_at, created_at. The archive deadline is derived from the configured daily closing time when payment succeeds; Staff queue/history reads idempotently archive due tickets and clear their read markers.
 - `kitchen_ticket_reads`: ticket_id, staff_profile_id, first_viewed_at; unique(ticket_id, staff_profile_id). Per-account BARU marker.
-- `receipts`: order_id unique, email_status, email_address nullable, email_attempt_count, email_sent_at, last_email_error, created_at. The per-order customer access token is stored only as `orders.access_token_hash`; do not create a second receipt token hash.
+- `receipts`: order_id unique, email_status (`NOT_REQUESTED|PENDING|SENDING|SENT|FAILED`), checkout email nullable, attempt/claim metadata, one automatic-attempt marker, email_sent_at, last_email_error, created_at. A missing checkout email stays `NOT_REQUESTED`; a failed email can be manually retried to the same address. The per-order customer access token is stored only as `orders.access_token_hash`; do not create a second receipt token hash.
 - No production `print_jobs` in V1. Do not implement physical printer pipeline.
 
 ## 2. Status model
