@@ -8,6 +8,7 @@ export type MidtransCharge = {
   transaction_status: string;
   status_code: string;
   gross_amount: string;
+  payment_type?: string;
   fraud_status?: string;
   expiry_time?: string;
   actions?: Array<{ name: string; method?: string; url: string }>;

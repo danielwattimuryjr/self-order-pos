@@ -3,7 +3,12 @@ import { failure, success } from "@/lib/api-response";
 import { checkPublicOrderRateLimit } from "@/lib/security/public-order-rate-limit";
 import { hashOrderAccessToken } from "@/lib/security/order-access-token";
 import { createServiceClient } from "@/lib/supabase/service";
-import { createQrisCharge, getTransactionStatus, qrisCodeUrl } from "@/lib/payments/midtrans";
+import {
+  createQrisCharge,
+  getTransactionStatus,
+  MidtransRequestError,
+  qrisCodeUrl,
+} from "@/lib/payments/midtrans";
 
 const paramsSchema = z.uuid();
 const requestSchema = z.object({
@@ -127,15 +132,113 @@ export async function POST(
       },
       "Percobaan pembayaran sebelumnya telah selesai.",
     );
+
+  const { data: order, error: orderError } = await supabase
+    .from("orders")
+    .select("customer_name, receipt_email")
+    .eq("id", orderId)
+    .single();
+  if (orderError)
+    return failure(
+      "PAYMENT_ATTEMPT_FAILED",
+      "Rincian pesanan belum dapat dimuat.",
+      500,
+    );
+
+  const createAndSaveQr = async () => {
+    const charge = await createQrisCharge({
+      providerOrderId: attempt.provider_order_id,
+      amount: Number(attempt.amount),
+      itemDetails: [
+        {
+          id: attempt.order_id,
+          price: Number(attempt.amount),
+          quantity: 1,
+          name: `Pesanan ${attempt.provider_order_id}`,
+        },
+      ],
+      customerName: order.customer_name,
+      customerEmail: order.receipt_email,
+      expiresAt: attempt.expires_at,
+    });
+    const qrUrl = charge.actions?.find(
+      (action) => action.name === "generate-qr-code",
+    )?.url ?? (charge.transaction_id ? qrisCodeUrl(charge.transaction_id) : undefined);
+    if (!qrUrl || !charge.transaction_id) return null;
+    const { error: saveError } = await supabase.rpc("save_payment_qr", {
+      p_payment_id: attempt.id,
+      p_transaction_id: charge.transaction_id,
+      p_qr_url: qrUrl,
+      p_provider_response_safe: {
+        transactionStatus: charge.transaction_status,
+        expiryTime: charge.expiry_time ?? null,
+      },
+    });
+    if (saveError) return null;
+    return {
+      orderId,
+      paymentAttemptId: attempt.id,
+      qrUrl,
+      expiresAt: attempt.expires_at,
+      status: "PENDING",
+    };
+  };
+
   if (attempt.existing) {
     // A previous request may have reached Midtrans but timed out before saving
     // the QR URL. Reconcile the provider transaction before leaving this
     // attempt in a permanently pending-without-QR state.
+    let provider: Awaited<ReturnType<typeof getTransactionStatus>>;
     try {
-      const provider = await getTransactionStatus(attempt.provider_order_id);
+      provider = await getTransactionStatus(attempt.provider_order_id);
+    } catch (error) {
+      // The payment row can be created before the provider receives the
+      // charge. A confirmed 404 means this provider order ID is still unused,
+      // so retry the charge with the same ID and persist the resulting QR.
+      if (error instanceof MidtransRequestError && error.httpStatus === 404) {
+        try {
+          const data = await createAndSaveQr();
+          if (data) return success(data, "QRIS siap dibayar.");
+        } catch (chargeError) {
+          // A duplicate ID means the transaction appeared between the status
+          // check and charge request; the next request will reconcile it.
+          if (
+            !(chargeError instanceof MidtransRequestError) ||
+            chargeError.httpStatus !== 406
+          ) {
+            return failure(
+              "PAYMENT_PROVIDER_UNAVAILABLE",
+              "Layanan pembayaran belum dapat dihubungi. Coba beberapa saat lagi.",
+              502,
+            );
+          }
+        }
+      } else if (
+        error instanceof MidtransRequestError &&
+        (error.httpStatus === 401 || error.httpStatus === 403)
+      ) {
+        return failure(
+          "PAYMENT_PROVIDER_UNAVAILABLE",
+          "Midtrans menolak pemeriksaan status. Pastikan Server Key memiliki izin Core API Read dan Write.",
+          502,
+        );
+      } else {
+        return failure(
+          "PAYMENT_PROVIDER_UNAVAILABLE",
+          "Layanan pembayaran belum dapat memeriksa percobaan QRIS. Periksa konfigurasi akses Midtrans lalu coba lagi.",
+          502,
+        );
+      }
+      return failure(
+        "PAYMENT_QR_PENDING",
+        "QRIS sedang dipersiapkan. Status akan diperiksa kembali otomatis.",
+        409,
+      );
+    }
+    try {
       const providerQrUrl = provider.actions?.find(
         (action) => action.name === "generate-qr-code",
-      )?.url ?? (provider.payment_type === "qris" && provider.transaction_id
+      )?.url ?? (provider.transaction_id
         ? qrisCodeUrl(provider.transaction_id)
         : undefined);
       if (providerQrUrl && provider.transaction_id) {
@@ -161,8 +264,11 @@ export async function POST(
           );
       }
     } catch {
-      // A not-yet-visible provider transaction remains pending. The same
-      // idempotent request can reconcile it on the next status refresh.
+      return failure(
+        "PAYMENT_PROVIDER_UNAVAILABLE",
+        "QRIS ditemukan, tetapi belum dapat dipulihkan. Coba beberapa saat lagi.",
+        502,
+      );
     }
     return failure(
       "PAYMENT_QR_PENDING",
@@ -171,67 +277,15 @@ export async function POST(
     );
   }
 
-  const { data: order, error: orderError } = await supabase
-    .from("orders")
-    .select("customer_name, receipt_email")
-    .eq("id", orderId)
-    .single();
-  if (orderError)
-    return failure(
-      "PAYMENT_ATTEMPT_FAILED",
-      "Rincian pesanan belum dapat dimuat.",
-      500,
-    );
   try {
-    const charge = await createQrisCharge({
-      providerOrderId: attempt.provider_order_id,
-      amount: Number(attempt.amount),
-      itemDetails: [
-        {
-          id: attempt.order_id,
-          price: Number(attempt.amount),
-          quantity: 1,
-          name: `Pesanan ${attempt.provider_order_id}`,
-        },
-      ],
-      customerName: order.customer_name,
-      customerEmail: order.receipt_email,
-      expiresAt: attempt.expires_at,
-    });
-    const qrUrl = charge.actions?.find(
-      (action) => action.name === "generate-qr-code",
-    )?.url;
-    if (!qrUrl)
+    const data = await createAndSaveQr();
+    if (!data)
       return failure(
         "QRIS_UNAVAILABLE",
         "Provider belum mengembalikan kode QR. Coba ulangi pembayaran.",
         502,
       );
-    const { error: saveError } = await supabase.rpc("save_payment_qr", {
-      p_payment_id: attempt.id,
-      p_transaction_id: charge.transaction_id,
-      p_qr_url: qrUrl,
-      p_provider_response_safe: {
-        transactionStatus: charge.transaction_status,
-        expiryTime: charge.expiry_time ?? null,
-      },
-    });
-    if (saveError)
-      return failure(
-        "PAYMENT_ATTEMPT_FAILED",
-        "Kode QR belum dapat disimpan.",
-        500,
-      );
-    return success(
-      {
-        orderId,
-        paymentAttemptId: attempt.id,
-        qrUrl,
-        expiresAt: attempt.expires_at,
-        status: "PENDING",
-      },
-      "QRIS siap dibayar.",
-    );
+    return success(data, "QRIS siap dibayar.");
   } catch {
     return failure(
       "PAYMENT_PROVIDER_UNAVAILABLE",
