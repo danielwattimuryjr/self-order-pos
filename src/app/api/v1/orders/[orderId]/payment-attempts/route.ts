@@ -3,7 +3,7 @@ import { failure, success } from "@/lib/api-response";
 import { checkPublicOrderRateLimit } from "@/lib/security/public-order-rate-limit";
 import { hashOrderAccessToken } from "@/lib/security/order-access-token";
 import { createServiceClient } from "@/lib/supabase/service";
-import { createQrisCharge } from "@/lib/payments/midtrans";
+import { createQrisCharge, getTransactionStatus } from "@/lib/payments/midtrans";
 
 const paramsSchema = z.uuid();
 const requestSchema = z.object({
@@ -33,7 +33,7 @@ export async function POST(
   const supabase = createServiceClient();
   const { data: orderOwner, error: orderOwnerError } = await supabase
     .from("orders")
-    .select("id, table_id")
+    .select("id, table_id, total_amount")
     .eq("id", orderId)
     .maybeSingle();
   if (orderOwnerError) {
@@ -57,6 +57,13 @@ export async function POST(
     orderTable.table_code !== parsed.data.tableCode
   ) {
     return failure("ORDER_NOT_FOUND", "Pesanan tidak ditemukan. 3", 404);
+  }
+  if (Number(orderOwner.total_amount) <= 0) {
+    return failure(
+      "PAYMENT_AMOUNT_INVALID",
+      "Total pesanan harus lebih dari Rp0 agar dapat dibayar dengan QRIS. Periksa harga menu lalu buat pesanan baru.",
+      422,
+    );
   }
   const tokenHash = hashOrderAccessToken(parsed.data.accessToken);
   const { data: attempt, error } = await supabase.rpc(
@@ -120,12 +127,47 @@ export async function POST(
       },
       "Percobaan pembayaran sebelumnya telah selesai.",
     );
-  if (attempt.existing)
+  if (attempt.existing) {
+    // A previous request may have reached Midtrans but timed out before saving
+    // the QR URL. Reconcile the provider transaction before leaving this
+    // attempt in a permanently pending-without-QR state.
+    try {
+      const provider = await getTransactionStatus(attempt.provider_order_id);
+      const providerQrUrl = provider.actions?.find(
+        (action) => action.name === "generate-qr-code",
+      )?.url;
+      if (providerQrUrl && provider.transaction_id) {
+        const { error: saveError } = await supabase.rpc("save_payment_qr", {
+          p_payment_id: attempt.id,
+          p_transaction_id: provider.transaction_id,
+          p_qr_url: providerQrUrl,
+          p_provider_response_safe: {
+            transactionStatus: provider.transaction_status,
+            expiryTime: provider.expiry_time ?? null,
+          },
+        });
+        if (!saveError)
+          return success(
+            {
+              orderId,
+              paymentAttemptId: attempt.id,
+              qrUrl: providerQrUrl,
+              expiresAt: attempt.expires_at,
+              status: attempt.status,
+            },
+            "QRIS siap dibayar.",
+          );
+      }
+    } catch {
+      // A not-yet-visible provider transaction remains pending. The same
+      // idempotent request can reconcile it on the next status refresh.
+    }
     return failure(
       "PAYMENT_QR_PENDING",
-      "QRIS sedang dipersiapkan. Periksa kembali status pembayaran beberapa saat lagi.",
+      "QRIS sedang dipersiapkan. Status akan diperiksa kembali otomatis.",
       409,
     );
+  }
 
   const { data: order, error: orderError } = await supabase
     .from("orders")

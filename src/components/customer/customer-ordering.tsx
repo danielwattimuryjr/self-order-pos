@@ -87,6 +87,7 @@ export function CustomerOrdering({ tableCode, initialFilters }: { tableCode: str
   const [paymentView, setPaymentView] = useState<PaymentView | null>(null);
   const [paymentError, setPaymentError] = useState("");
   const [paymentBusy, setPaymentBusy] = useState(false);
+  const [downloadingQr, setDownloadingQr] = useState(false);
   const [cancelOrderConfirm, setCancelOrderConfirm] = useState(false);
   const [cancelBusy, setCancelBusy] = useState(false);
   const [paymentNow, setPaymentNow] = useState(0);
@@ -179,6 +180,7 @@ export function CustomerOrdering({ tableCode, initialFilters }: { tableCode: str
   useEffect(() => {
     if (!createdOrder) return;
     let active = true;
+    let pendingAttemptRetry: ReturnType<typeof setTimeout> | undefined;
     const updatePayment = (payment: PaymentView) => {
       if (!active) return;
       setPaymentView(payment);
@@ -208,7 +210,11 @@ export function CustomerOrdering({ tableCode, initialFilters }: { tableCode: str
         });
         const result = await response.json();
         if (!response.ok) {
-          if (result.error?.code === "PAYMENT_QR_PENDING") { await fetchStatus(); return; }
+          if (result.error?.code === "PAYMENT_QR_PENDING") {
+            await fetchStatus();
+            if (active) pendingAttemptRetry = setTimeout(() => void ensureAttempt(false), 5000);
+            return;
+          }
           throw new Error(result.message ?? "QRIS belum dapat dibuat.");
         }
         if (result.data.qrUrl) updatePayment({ qrUrl: result.data.qrUrl, paymentStatus: "PENDING", attemptStatus: result.data.status ?? "PENDING", expiresAt: result.data.expiresAt, paidAt: null });
@@ -235,7 +241,7 @@ export function CustomerOrdering({ tableCode, initialFilters }: { tableCode: str
           if (paymentRealtimeConnected) void fetchStatus();
         });
     }).catch(() => undefined);
-    return () => { active = false; clearInterval(poll); if (channel) void createClient().removeChannel(channel); };
+    return () => { active = false; clearInterval(poll); if (pendingAttemptRetry) clearTimeout(pendingAttemptRetry); if (channel) void createClient().removeChannel(channel); };
   }, [createdOrder, paymentRetry, tableCode]);
 
   useEffect(() => {
@@ -262,6 +268,33 @@ export function CustomerOrdering({ tableCode, initialFilters }: { tableCode: str
       else toast.success("Pesanan dibatalkan.");
     } catch (error) { setPaymentError(error instanceof Error ? error.message : "Pesanan belum dapat dibatalkan."); }
     finally { setCancelBusy(false); }
+  }
+
+  async function downloadPaymentQr() {
+    if (!createdOrder || !paymentView?.qrUrl || downloadingQr) return;
+    setDownloadingQr(true);
+    try {
+      const response = await fetch(`/api/v1/orders/${createdOrder.id}/payment-qr`, {
+        headers: { Authorization: `Bearer ${createdOrder.accessToken}` },
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        const result = await response.json().catch(() => null);
+        throw new Error(result?.message ?? "QR pembayaran belum dapat diunduh.");
+      }
+      const blobUrl = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = `qris-${createdOrder.orderNumber}.png`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(blobUrl);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "QR pembayaran belum dapat diunduh.");
+    } finally {
+      setDownloadingQr(false);
+    }
   }
 
   useEffect(() => {
@@ -587,7 +620,7 @@ export function CustomerOrdering({ tableCode, initialFilters }: { tableCode: str
           <div className="text-left"><p className="font-semibold">Pembayaran · {createdOrder.orderNumber}</p><p className="text-sm text-muted-foreground">Total {money(createdOrder.totalAmount)}</p></div>
           {paymentView?.paymentStatus === "PAID" ? <div role="status" className="space-y-3 rounded-lg bg-success-soft p-4 text-success"><div><p className="font-semibold">Pembayaran berhasil</p><p className="mt-1 text-sm">Pesanan Anda telah dikonfirmasi.</p></div><Button asChild><a href={`/receipt/${encodeURIComponent(createdOrder.accessToken)}`}>Lihat struk</a></Button></div>
             : paymentView?.paymentStatus === "CANCELLED" || paymentView?.paymentStatus === "EXPIRED" ? <div role="status" className="rounded-lg bg-secondary p-4"><p className="font-semibold">{paymentView.paymentStatus === "CANCELLED" ? "Pesanan dibatalkan" : "Batas pembayaran berakhir"}</p></div>
-              : paymentView?.qrUrl ? <><Image src={paymentView.qrUrl} alt="Kode QRIS untuk pembayaran" width={320} height={320} unoptimized className="mx-auto aspect-square w-64 rounded-lg border bg-white object-contain p-2" /><p className="text-sm">Pindai QRIS melalui aplikasi pembayaran Anda.</p><p className="text-xs text-muted-foreground">Batas pembayaran {new Date(createdOrder.expiresAt).toLocaleTimeString("id-ID", { timeZone: "Asia/Jakarta", hour: "2-digit", minute: "2-digit" })} WIB{paymentView.paymentStatus === "PENDING" ? ` · ${Math.max(0, Math.ceil((new Date(createdOrder.expiresAt).getTime() - paymentNow) / 1000))} detik tersisa` : ""}</p></>
+              : paymentView?.qrUrl ? <><Image src={paymentView.qrUrl} alt="Kode QRIS untuk pembayaran" width={320} height={320} unoptimized className="mx-auto aspect-square w-64 rounded-lg border bg-white object-contain p-2" /><p className="text-sm">Pindai QRIS melalui aplikasi pembayaran Anda.</p><Button type="button" variant="outline" className="w-full" disabled={downloadingQr} onClick={() => void downloadPaymentQr()}>{downloadingQr ? "Mengunduh QR…" : "Unduh QR pembayaran"}</Button><p className="text-xs text-muted-foreground">Batas pembayaran {new Date(createdOrder.expiresAt).toLocaleTimeString("id-ID", { timeZone: "Asia/Jakarta", hour: "2-digit", minute: "2-digit" })} WIB{paymentView.paymentStatus === "PENDING" ? ` · ${Math.max(0, Math.ceil((new Date(createdOrder.expiresAt).getTime() - paymentNow) / 1000))} detik tersisa` : ""}</p></>
                 : <div role="status" className="rounded-lg bg-secondary p-4"><p className="font-medium">{paymentBusy ? "Menyiapkan QRIS…" : paymentView?.attemptStatus === "FAILED" ? "Percobaan pembayaran gagal." : "Menunggu QRIS dari provider…"}</p><p className="mt-1 text-sm text-muted-foreground">Status pembayaran diperbarui otomatis.</p>{paymentView?.attemptStatus === "FAILED" && <Button className="mt-3" variant="outline" onClick={() => setPaymentRetry((count) => count + 1)}>Coba lagi</Button>}</div>}
           {paymentError && <p role="alert" className="text-sm text-destructive">{paymentError}</p>}
           {paymentView?.paymentStatus === "PENDING" && <Button type="button" variant="outline" className="w-full" onClick={() => setCancelOrderConfirm(true)}>Batalkan pesanan</Button>}
