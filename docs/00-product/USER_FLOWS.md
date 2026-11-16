@@ -56,6 +56,7 @@
 - Admin can configure operating hours and temporary close/reopen.
 - Admin can cancel unpaid order with mandatory reason.
 - Admin can manage staff accounts, but cannot change own role or deactivate own account.
+- Staff accounts are created through an email invitation; the invited user sets their password through the Supabase Auth flow.
 
 ## 3. Staff flow
 

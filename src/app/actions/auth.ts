@@ -23,12 +23,18 @@ export async function signIn(_state: AuthActionState, formData: FormData): Promi
     await supabase.auth.signOut();
     return { error: "Akun tidak aktif atau belum memiliki akses staf." };
   }
+  const { error: auditError } = await supabase.rpc("admin_record_auth_event", { p_action: "LOGIN" });
+  if (auditError) {
+    await supabase.auth.signOut();
+    return { error: "Login belum dapat dicatat. Coba lagi nanti." };
+  }
 
   redirect(staff.role === "ADMIN" ? "/admin/dashboard" : "/staff/queue");
 }
 
 export async function signOut() {
   const supabase = await createClient();
+  try { await supabase.rpc("admin_record_auth_event", { p_action: "LOGOUT" }); } catch { /* Logout must complete if audit delivery is unavailable. */ }
   await supabase.auth.signOut({ scope: "local" });
   redirect("/login");
 }

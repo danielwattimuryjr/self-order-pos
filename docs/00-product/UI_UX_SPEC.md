@@ -45,15 +45,15 @@
 
 ## 3. Admin pages
 
-- Dashboard: KPI cards (omzet, paid orders, voucher discount, AOV), chart, top 10 menu, payment method summary, date filters.
-- Pesanan: order list/detail, operational controls where authorized.
+- Dashboard: KPI cards (omzet, paid orders, voucher discount, AOV), chart, top 10 menu, payment method summary, date filters. Date filters use `operational_date`; custom charts are daily through 31 days and weekly for longer ranges.
+- Pesanan: all-payment-status order list/detail; Admin can cancel unpaid orders after provider verification and must choose a structured reason.
 - Menu: category/menu list with drag/drop sorting; create/edit forms; image upload; active toggle.
 - Menu detail: variant/add-on editor and templates.
 - Template page: built-in/custom cards, search, category filter, sorting, preview, duplicate, save-from-menu, manual save, and apply modes.
 - Voucher: list newest first, search code/name, create/edit, status and validity.
 - Meja: list, add/edit/deactivate, download individual QR and all QR in PDF.
-- Transaksi: read-only list and detail; order number search/date filter.
-- Staf: create/update role/status; no plaintext password reveal after creation.
+- Transaksi: read-only list and detail for all payment statuses; order number search/date filter using operational date. Staff has read-only access.
+- Staf: invite by email, update role/status; invited users set their own password. No plaintext password reveal.
 - Audit Log: immutable read-only history.
 - Operating schedule: daily opening/closing time; temporary close/reopen.
 

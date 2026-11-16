@@ -5,6 +5,7 @@
 - Supabase Auth email/password for Admin and Staff.
 - Exactly two application roles: `ADMIN`, `STAFF`.
 - Admin creates Staff accounts. Passwords are never stored/displayed by application tables; use Supabase Auth secure admin APIs/server-side.
+- Staff accounts are created with Supabase Auth email invitations; the invited user sets their own password. Invitation and profile changes are audited without storing credentials or invite tokens.
 - Password policy: minimum 8 characters, letters and numbers; no symbol requirement.
 - Forgot/reset password through Supabase Auth email flow.
 - Session duration target: 7 days. Logout ends current device session. Multiple simultaneous devices allowed.

@@ -16,6 +16,8 @@ Use UUID primary keys, `timestamptz` for instants, `NUMERIC(precision,0)` or int
 - `api_rate_limits`: short-lived request counters keyed by SHA-256 fingerprints; table access is restricted to a server-only atomic rate-limit RPC.
 - `table_sessions`: table_id, started_at, expires_at, closed_at, status. Enforce at most one active session per table with partial unique index. Initial expiry is 60 minutes; only valid order/payment activity may extend it.
 - `audit_logs`: append-only administrative event records; Phase 2 writes settings and table mutations, while the UI is planned for Phase 7.
+- Phase 7 Admin cancellation, Staff account changes, and successful login/logout events append audit records. Admin cancellation updates the order, payment attempts, voucher reservation, and audit log in one RPC transaction.
+- Phase 7 analytics are exposed through bounded, Admin-checked aggregate RPCs; source orders are filtered by `operational_date` and paid status.
 
 ### Catalog
 - `categories`: name, sort_order, is_active, timestamps.

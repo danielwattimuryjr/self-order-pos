@@ -90,6 +90,10 @@
 - Temporary close blocks new order but does not invalidate existing payment window.
 - Analytics include paid orders only and compute omzet after discount.
 - Staff sees operational order detail but no aggregated revenue.
+- Admin cancellation requires a valid structured reason and text for `OTHER`; provider-confirmed settlement wins a cancellation race, and a successful cancellation writes one atomic audit event.
+- Staff invitation, role/status changes, and login/logout append audit entries. Self-demotion/deactivation and removal of the last active Admin are rejected.
+- Admin and Staff transaction APIs enforce role-specific access; Staff cannot access Admin analytics or mutate orders.
+- Analytics use inclusive `operational_date` filters, count paid orders only, calculate revenue from the post-discount paid total, and use hourly/daily/weekly buckets according to the selected range.
 
 ## 3. Definition of Done per feature
 

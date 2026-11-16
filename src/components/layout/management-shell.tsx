@@ -8,10 +8,14 @@ import {
   History,
   LayoutDashboard,
   LogOut,
+  ReceiptText,
+  ScrollText,
+  ShoppingBag,
   SlidersHorizontal,
   Table2,
   TicketPercent,
   UserRound,
+  UsersRound,
   UtensilsCrossed,
 } from "lucide-react";
 import {
@@ -42,11 +46,16 @@ const adminLinks: NavigationLink[] = [
   { href: "/admin/catalog", label: "Kategori & Menu", icon: UtensilsCrossed },
   { href: "/admin/templates", label: "Template Menu", icon: SlidersHorizontal },
   { href: "/admin/vouchers", label: "Voucher", icon: TicketPercent },
+  { href: "/admin/orders", label: "Pesanan", icon: ShoppingBag },
+  { href: "/admin/transactions", label: "Transaksi", icon: ReceiptText },
+  { href: "/admin/staff", label: "Staf", icon: UsersRound },
+  { href: "/admin/audit-logs", label: "Audit Log", icon: ScrollText },
 ];
 
 const staffLinks: NavigationLink[] = [
   { href: "/staff/queue", label: "Antrean Pesanan", icon: ClipboardList },
   { href: "/staff/history", label: "Riwayat Pesanan", icon: History },
+  { href: "/staff/transactions", label: "Transaksi", icon: ReceiptText },
   { href: "/staff/profile", label: "Profil Akun", icon: UserRound },
 ];
 

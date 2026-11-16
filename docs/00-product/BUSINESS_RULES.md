@@ -36,6 +36,7 @@ Dokumen ini adalah sumber kebenaran aturan bisnis. Semua waktu menggunakan `Asia
 - Pembatalan pelanggan meminta konfirmasi. Jika pembayaran ternyata sukses, cancel ditolak dan pelanggan diarahkan ke halaman konfirmasi.
 - Admin adalah satu-satunya role yang dapat membatalkan order unpaid.
 - Admin wajib memilih alasan pembatalan: alasan terstruktur termasuk `Lainnya`; jika `Lainnya`, teks alasan wajib diisi.
+- Pilihan alasan pembatalan Admin: permintaan pelanggan, pesanan duplikat, item tidak tersedia, kendala operasional, dan lainnya. Simpan kode alasan terstruktur; teks tambahan hanya untuk `Lainnya`.
 - Catat actor, waktu, reason, dan perubahan pada Audit Log.
 - Refund tidak tersedia di V1; penanganan refund dilakukan di luar aplikasi dan transaksi asli tidak diubah.
 
@@ -143,6 +144,8 @@ Dokumen ini adalah sumber kebenaran aturan bisnis. Semua waktu menggunakan `Asia
 - Top 10 menu berdasarkan quantity terjual, paid order saja, memakai snapshot name.
 - Ringkasan metode pembayaran: revenue dan jumlah transaksi per metode yang benar-benar digunakan.
 - Transaction history menampilkan order number, waktu bayar, meja, total paid, diskon voucher, payment method, payment status. Search order number dan date filter.
+- Daftar Transaksi menampilkan semua status pembayaran; metrik penjualan hanya menghitung order paid. Filter laporan menggunakan `operational_date`.
+- Grafik rentang hari ini/kemarin per jam; rentang 7/30 hari per hari; custom range harian sampai 31 hari dan mingguan untuk rentang yang lebih panjang.
 - Transaction detail read-only setelah paid.
 - Staff boleh melihat order/transaction detail untuk operasi, tetapi tidak boleh melihat agregat/analytics/revenue dashboard.
 - Operational hours: Admin mengatur satu jadwal jam buka/tutup yang sama setiap hari, mendukung overnight (mis. 10:00–02:00). Staff hanya melihat.

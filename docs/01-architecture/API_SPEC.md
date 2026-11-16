@@ -42,8 +42,12 @@ Errors use appropriate HTTP status and stable error codes; never leak provider s
 - Template endpoints: list/create/update/delete, duplicate, template category CRUD, save-from-menu, preview in Admin UI, and apply to a menu with `REPLACE_ALL` or `REPLACE_BY_TYPE`. Update uses `version` for optimistic locking.
 - `GET/PUT /admin/settings/operating-hours`.
 - `POST /admin/restaurant/temporary-close`; `POST /admin/restaurant/reopen`.
-- `GET /admin/transactions` and detail (read-only for paid orders).
-- `POST /admin/orders/{id}/cancel` — unpaid only, reason required, provider verification.
+- `GET /admin/transactions` and `GET /admin/transactions/{orderId}` — read-only order/payment data for all payment statuses; supports order number search, operational date range, status filter, and server-side pagination.
+- `POST /admin/orders/{id}/cancel` — unpaid only. Body: `reasonCode` (`CUSTOMER_REQUEST|DUPLICATE_ORDER|ITEM_UNAVAILABLE|OPERATIONAL_ISSUE|OTHER`) and optional `reasonOther`, required only for `OTHER`. Verify Midtrans status, cancel pending provider payment, verify again, then atomically update order/payment/voucher reservation and write audit.
+- `GET /admin/staff` — list accounts without Auth credentials.
+- `POST /admin/staff` — invite by email with `{ email, name, role }`; invited user sets their password through Supabase Auth.
+- `PATCH /admin/staff/{profileId}` — update `{ name, role, isActive }`; cannot change own role/status or deactivate the last active Admin.
+- `GET /admin/audit-logs` — read-only, paginated, date/action-filtered audit events.
 - `GET /admin/analytics/summary`, `/sales-chart`, `/top-menus`, `/payment-methods`.
 - `GET /admin/audit-logs`.
 - `GET /admin/tables/qr-pdf` and individual QR download.
@@ -53,6 +57,7 @@ Errors use appropriate HTTP status and stable error codes; never leak provider s
 - Validate all request bodies, params, and query strings.
 - Server computes all monetary totals.
 - Use pagination cursors or page/limit with bounded max; history default 20.
+- Analytics functions accept an inclusive `from`/`to` operational date range bounded to 367 calendar dates. Metrics include paid orders only. Sales chart granularity is hourly for today/yesterday, daily for 7/30-day and custom ranges through 31 days, and weekly for longer custom ranges.
 - Use idempotency keys for order/payment creation where appropriate.
 - Customer payment state is broadcast on an order-token-derived Realtime topic; the payload is only a change notice. Clients refetch the token-protected status endpoint. Poll every 5 seconds when Realtime is unavailable and continue reconciliation at the order expiry deadline.
 - Rate limit public table/catalog/order/receipt endpoints.
