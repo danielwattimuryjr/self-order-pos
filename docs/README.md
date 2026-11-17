@@ -18,6 +18,7 @@ Dokumentasi ini menjadi acuan produk, business rules, desain, arsitektur, implem
 - `SECURITY.md`: autentikasi, otorisasi, RLS, dan perlindungan data.
 - `INTEGRATIONS.md`: integrasi provider.
 - `LOCAL_DEVELOPMENT.md`: Docker Desktop, Supabase CLI, environment variables, migration, dan local workflow.
+- `RELEASE_RUNBOOK.md`: Phase 8 staging, UAT, email, monitoring, backup, dan production release gates.
 
 ### `02-quality/`
 - `TESTING.md`: strategi pengujian dan acceptance criteria.

@@ -153,8 +153,8 @@ export function VouchersManager() {
   }
 
   // Initial state is loaded from the Admin API.
-  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
   }, []);
 

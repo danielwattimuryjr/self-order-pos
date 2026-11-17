@@ -143,3 +143,35 @@ Local and staging must not share production credentials or production data. Prod
 - This decision does not mean Supabase must be self-hosted in production. Production V1 uses hosted Supabase.
 - Docker Desktop is the local container runtime; Supabase CLI manages the Supabase local stack.
 - Do not add a separate Express backend or a manually assembled Supabase Docker Compose stack for V1; the agreed application architecture uses Next.js Route Handlers and Supabase CLI.
+
+## 11. Phase 8 local release checks
+
+Install the Playwright browser once:
+
+```bash
+npx playwright install chromium
+```
+
+Run customer E2E tests and optional local role tests:
+
+```bash
+npm run test:e2e
+```
+
+The E2E config accepts only loopback application and Supabase URLs. It clears Midtrans and Resend credentials from the test server. For Admin/Staff checks, create dedicated users in local Supabase and provide their credentials through the four `E2E_*` process environment variables listed in `TESTING.md`; do not use hosted accounts.
+
+With the local app running on port 3100, run the bounded catalog concurrency check:
+
+```bash
+E2E_TABLE_CODE=<active-local-table-uuidv4> npm run test:load
+```
+
+The load script sends at most 30 requests in parallel and rejects any target that is not localhost. It may create/join one active table session in the local database.
+
+Run SQL policy and migration tests against the local stack after applying migrations:
+
+```bash
+npx supabase test db
+```
+
+These tests use transactions with rollback; do not substitute production Supabase credentials or run destructive reset commands against a hosted project.

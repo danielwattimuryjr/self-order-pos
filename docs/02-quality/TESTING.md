@@ -7,6 +7,13 @@
 - E2E: complete customer order and Admin/Staff workflows on mobile/desktop.
 - Contract: API request/response schemas and provider adapter behavior.
 
+### Phase 8 release checks
+- GitHub Actions runs lint, typecheck, Vitest, production build, and Chromium E2E for pull requests and pushes to `master`.
+- Run `npm run test:e2e` against localhost only. Customer checkout tests stub the HTTP payment provider; optional Admin/Staff role tests use dedicated local Supabase users provided through `E2E_ADMIN_EMAIL`, `E2E_ADMIN_PASSWORD`, `E2E_STAFF_EMAIL`, and `E2E_STAFF_PASSWORD`.
+- Run `npx supabase test db` after local migrations are applied. The Phase 8 security test asserts RLS on every public table, pinned `search_path` on every public `SECURITY DEFINER` function, and denies anonymous execution of privileged RPCs.
+- Run `npm run test:load` against an already running local app with `E2E_TABLE_CODE` set to an active local table. The script caps parallel requests at 30 and verifies concurrent catalog resolutions join one session; it rejects non-loopback targets.
+- Midtrans acceptance tests use sandbox credentials and callback URLs only. Production callback/payment acceptance remains a release-operator task.
+
 ## 2. Critical acceptance scenarios
 
 ### Sessions

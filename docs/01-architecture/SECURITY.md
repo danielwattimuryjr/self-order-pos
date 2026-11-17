@@ -51,8 +51,13 @@
 - Public endpoint rate limits per IP and relevant table/order token.
 - Voucher validation and order creation use an atomic limit of 60 requests per minute per source IP and table code.
 - Public catalog requests are limited to 60 per minute per client IP and per table code. The rate-limit key stores only a SHA-256 fingerprint; a server-only service-role client calls the atomic database limiter and session resolver. Do not expose that key in client code.
+- Vercel is the trusted edge for client IP headers. Rate limiting reads Vercel's forwarded client IP header; deployments behind an additional proxy must use a trusted-proxy configuration that prevents clients from spoofing the forwarded IP. Never treat an arbitrary client-supplied forwarding header as authoritative.
 - Direct client writes to menus and variant/add-on configuration are revoked; Admin mutations go through RPCs that verify the active Admin profile. Template updates use the version-checked RPC.
 - Public catalog data includes only active category/menu/configuration rows. Menu image reads are public by design; image writes and deletes require an active Admin.
+
+## 7. Release verification
+- Run `supabase/tests/phase8_security_release.test.sql` against the local database after migrations. It checks RLS coverage, secure `search_path` settings, anonymous RPC access, and direct-write restrictions on critical data.
+- Run E2E and concurrency checks only against localhost or an explicitly isolated staging project. Do not use production credentials or production data for tests.
 
 ## 6. Audit Log
 

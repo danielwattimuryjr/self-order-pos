@@ -61,6 +61,7 @@ Build in vertical slices. Do not ask the coding agent to implement all modules i
 - Midtrans sandbox acceptance and production checklist.
 - Email domain verification, rate limiting, observability, backups.
 - Deploy staging, UAT, then production.
+- Follow `docs/01-architecture/RELEASE_RUNBOOK.md`; production changes require a separate explicit release authorization.
 
 ## Release gates
 
