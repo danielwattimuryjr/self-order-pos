@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
   SelectContent,
@@ -67,6 +68,7 @@ export function AnalyticsDashboard({ operationalDate }: Props) {
   const [methods, setMethods] = useState<Method[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const invalidRange = !range.from || !range.to || range.from > range.to;
 
   const updatePreset = (value: (typeof presets)[number]) => {
     setPreset(value);
@@ -110,6 +112,10 @@ export function AnalyticsDashboard({ operationalDate }: Props) {
       }
       setLoading(true);
       setError("");
+      setSummary(null);
+      setPoints([]);
+      setMenus([]);
+      setMethods([]);
       const params = new URLSearchParams({
         from: range.from,
         to: range.to,
@@ -185,7 +191,7 @@ export function AnalyticsDashboard({ operationalDate }: Props) {
     <div className="space-y-6">
       <div className="grid gap-3 rounded-xl border bg-card p-4 sm:grid-cols-[14rem_1fr_1fr] sm:items-end">
         <div className="space-y-2">
-          <Label>Periode</Label>
+          <Label htmlFor="analytics-preset">Periode</Label>
           <Select
             value={preset}
             onValueChange={(value) => {
@@ -193,7 +199,7 @@ export function AnalyticsDashboard({ operationalDate }: Props) {
                 updatePreset(value as (typeof presets)[number]);
             }}
           >
-            <SelectTrigger>
+            <SelectTrigger id="analytics-preset">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -211,6 +217,7 @@ export function AnalyticsDashboard({ operationalDate }: Props) {
             id="analytics-from"
             type="date"
             value={range.from}
+            aria-invalid={invalidRange}
             onChange={(e) => updateCustomDate("from", e.target.value)}
           />
         </div>
@@ -220,9 +227,28 @@ export function AnalyticsDashboard({ operationalDate }: Props) {
             id="analytics-to"
             type="date"
             value={range.to}
+            aria-invalid={invalidRange}
             onChange={(e) => updateCustomDate("to", e.target.value)}
           />
         </div>
+        <p
+          className="text-xs text-muted-foreground sm:col-span-3"
+          aria-live="polite"
+        >
+          Menggunakan tanggal operasional Asia/Jakarta ·{" "}
+          {range.from.split("-").reverse().join("/")}–
+          {range.to.split("-").reverse().join("/")} ·{" "}
+          {range.granularity === "hour"
+            ? "per jam"
+            : range.granularity === "day"
+              ? "per hari"
+              : "per minggu"}
+        </p>
+        {invalidRange && (
+          <p role="alert" className="text-sm text-destructive sm:col-span-3">
+            Tanggal awal harus sama dengan atau sebelum tanggal akhir.
+          </p>
+        )}
       </div>
       {error && (
         <div
@@ -243,142 +269,162 @@ export function AnalyticsDashboard({ operationalDate }: Props) {
           </Button>
         </div>
       )}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {metricCards.map(({ label, value, icon: Icon }) => (
-          <Card key={label}>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardDescription>{label}</CardDescription>
-              <Icon className="size-4 text-muted-foreground" />
+      {!error && (
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {metricCards.map(({ label, value, icon: Icon }) => (
+            <Card key={label}>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardDescription>{label}</CardDescription>
+                <Icon className="size-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                {loading ? (
+                  <Skeleton aria-hidden="true" className="h-7 w-32" />
+                ) : (
+                  <div className="text-xl font-semibold tabular-nums">
+                    {value}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+      {!error && (
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(18rem,1fr)]">
+          <Card>
+            <CardHeader>
+              <CardTitle>Omzet</CardTitle>
+              <CardDescription>
+                Hanya pesanan dengan pembayaran berhasil ·{" "}
+                {range.granularity === "hour"
+                  ? "per jam"
+                  : range.granularity === "day"
+                    ? "per tanggal operasional"
+                    : "per minggu"}
+              </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="text-xl font-semibold tabular-nums">
-                {loading ? "…" : value}
+              <div className="h-72" aria-busy={loading}>
+                {loading ? (
+                  <Skeleton aria-hidden="true" className="h-full w-full" />
+                ) : points.length ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      data={points}
+                      margin={{ top: 8, right: 8, bottom: 4, left: 4 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                      <XAxis
+                        dataKey="bucket"
+                        tickLine={false}
+                        axisLine={false}
+                        tick={{ fontSize: 12 }}
+                      />
+                      <YAxis
+                        tickLine={false}
+                        axisLine={false}
+                        tickFormatter={(value: number) =>
+                          new Intl.NumberFormat("id-ID", {
+                            notation: "compact",
+                          }).format(value)
+                        }
+                        tick={{ fontSize: 12 }}
+                        width={48}
+                      />
+                      <Tooltip formatter={(value) => money(Number(value))} />
+                      <Bar
+                        dataKey="revenue"
+                        name="Omzet"
+                        fill="var(--primary)"
+                        radius={[4, 4, 0, 0]}
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="grid h-full place-items-center text-sm text-muted-foreground">
+                    Belum ada omzet pada periode ini.
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
-        ))}
-      </div>
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(18rem,1fr)]">
-        <Card>
-          <CardHeader>
-            <CardTitle>Omzet</CardTitle>
-            <CardDescription>
-              Hanya pesanan dengan pembayaran berhasil ·{" "}
-              {range.granularity === "hour"
-                ? "per jam"
-                : range.granularity === "day"
-                  ? "per tanggal operasional"
-                  : "per minggu"}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="h-72" aria-busy={loading}>
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={points}
-                  margin={{ top: 8, right: 8, bottom: 4, left: 4 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                  <XAxis
-                    dataKey="bucket"
-                    tickLine={false}
-                    axisLine={false}
-                    tick={{ fontSize: 12 }}
-                  />
-                  <YAxis
-                    tickLine={false}
-                    axisLine={false}
-                    tickFormatter={(value: number) =>
-                      new Intl.NumberFormat("id-ID", {
-                        notation: "compact",
-                      }).format(value)
-                    }
-                    tick={{ fontSize: 12 }}
-                    width={48}
-                  />
-                  <Tooltip formatter={(value) => money(Number(value))} />
-                  <Bar
-                    dataKey="revenue"
-                    name="Omzet"
-                    fill="var(--primary)"
-                    radius={[4, 4, 0, 0]}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Metode pembayaran</CardTitle>
-            <CardDescription>Transaksi paid pada periode ini.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {loading ? (
-              <p className="text-sm text-muted-foreground">Memuat…</p>
-            ) : methods.length ? (
-              methods.map((method) => (
-                <div
-                  key={method.method}
-                  className="flex items-start justify-between gap-3 border-b pb-3 last:border-0"
-                >
-                  <div>
-                    <p className="font-medium">{method.method}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {method.transactions} transaksi
+          <Card>
+            <CardHeader>
+              <CardTitle>Metode pembayaran</CardTitle>
+              <CardDescription>
+                Transaksi paid pada periode ini.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {loading ? (
+                <p className="text-sm text-muted-foreground">Memuat…</p>
+              ) : methods.length ? (
+                methods.map((method) => (
+                  <div
+                    key={method.method}
+                    className="flex items-start justify-between gap-3 border-b pb-3 last:border-0"
+                  >
+                    <div>
+                      <p className="font-medium">{method.method}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {method.transactions} transaksi
+                      </p>
+                    </div>
+                    <p className="text-right text-sm tabular-nums">
+                      {money(method.revenue)}
                     </p>
                   </div>
-                  <p className="text-right text-sm tabular-nums">
-                    {money(method.revenue)}
-                  </p>
-                </div>
-              ))
+                ))
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Belum ada pembayaran sukses pada periode ini.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+      {!error && (
+        <Card>
+          <CardHeader>
+            <CardTitle>10 menu terlaris</CardTitle>
+            <CardDescription>
+              Diurutkan berdasarkan jumlah item pada order paid.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="p-0">
+            {loading ? (
+              <p className="p-6 text-sm text-muted-foreground">Memuat…</p>
+            ) : menus.length ? (
+              <div className="divide-y">
+                {menus.map((menu, index) => (
+                  <div
+                    key={`${menu.menuName}-${index}`}
+                    className="flex items-center justify-between gap-4 px-6 py-3"
+                  >
+                    <div className="flex min-w-0 items-center gap-3">
+                      <span className="grid size-7 shrink-0 place-items-center rounded-full bg-muted text-xs font-medium">
+                        {index + 1}
+                      </span>
+                      <span className="truncate font-medium">
+                        {menu.menuName}
+                      </span>
+                    </div>
+                    <span className="shrink-0 text-sm tabular-nums text-muted-foreground">
+                      {menu.quantity} terjual
+                    </span>
+                  </div>
+                ))}
+              </div>
             ) : (
-              <p className="text-sm text-muted-foreground">
-                Belum ada pembayaran sukses pada periode ini.
+              <p className="p-6 text-sm text-muted-foreground">
+                Belum ada item terjual pada periode ini.
               </p>
             )}
           </CardContent>
         </Card>
-      </div>
-      <Card>
-        <CardHeader>
-          <CardTitle>10 menu terlaris</CardTitle>
-          <CardDescription>
-            Diurutkan berdasarkan jumlah item pada order paid.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="p-0">
-          {loading ? (
-            <p className="p-6 text-sm text-muted-foreground">Memuat…</p>
-          ) : menus.length ? (
-            <div className="divide-y">
-              {menus.map((menu, index) => (
-                <div
-                  key={`${menu.menuName}-${index}`}
-                  className="flex items-center justify-between gap-4 px-6 py-3"
-                >
-                  <div className="flex min-w-0 items-center gap-3">
-                    <span className="grid size-7 shrink-0 place-items-center rounded-full bg-muted text-xs font-medium">
-                      {index + 1}
-                    </span>
-                    <span className="truncate font-medium">
-                      {menu.menuName}
-                    </span>
-                  </div>
-                  <span className="shrink-0 text-sm tabular-nums text-muted-foreground">
-                    {menu.quantity} terjual
-                  </span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="p-6 text-sm text-muted-foreground">
-              Belum ada item terjual pada periode ini.
-            </p>
-          )}
-        </CardContent>
-      </Card>
+      )}
     </div>
   );
 }

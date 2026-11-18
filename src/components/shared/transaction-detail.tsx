@@ -15,7 +15,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-type Props = { orderId: string; endpoint: string; backHref: string };
+type Props = {
+  orderId: string;
+  endpoint: string;
+  backHref: string;
+  adminPresentation?: boolean;
+};
 type Order = {
   id: string;
   order_number: string;
@@ -83,8 +88,20 @@ const statusLabel = (value: string) =>
     EXPIRED: "Kedaluwarsa",
     CANCELLED: "Dibatalkan",
   })[value] ?? value;
+const orderStatusLabel = (value: string) =>
+  ({
+    PENDING_PAYMENT: "Menunggu pembayaran",
+    PAID: "Dikonfirmasi",
+    CANCELLED: "Dibatalkan",
+    EXPIRED: "Kedaluwarsa",
+  })[value] ?? value;
 
-export function TransactionDetail({ orderId, endpoint, backHref }: Props) {
+export function TransactionDetail({
+  orderId,
+  endpoint,
+  backHref,
+  adminPresentation = false,
+}: Props) {
   const [detail, setDetail] = useState<Detail | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -154,17 +171,33 @@ export function TransactionDetail({ orderId, endpoint, backHref }: Props) {
             {order.operational_date.split("-").reverse().join("/")}
           </p>
         </div>
-        <Badge
-          variant={
-            order.payment_status === "PAID"
-              ? "default"
-              : order.payment_status === "PENDING"
-                ? "secondary"
-                : "outline"
-          }
-        >
-          {statusLabel(order.payment_status)}
-        </Badge>
+        <div className="flex flex-wrap gap-2">
+          {adminPresentation && (
+            <Badge
+              variant={
+                order.order_status === "PAID"
+                  ? "default"
+                  : order.order_status === "PENDING_PAYMENT"
+                    ? "secondary"
+                    : "outline"
+              }
+            >
+              Pesanan · {orderStatusLabel(order.order_status)}
+            </Badge>
+          )}
+          <Badge
+            variant={
+              order.payment_status === "PAID"
+                ? "default"
+                : order.payment_status === "PENDING"
+                  ? "secondary"
+                  : "outline"
+            }
+          >
+            {adminPresentation ? "Pembayaran · " : ""}
+            {statusLabel(order.payment_status)}
+          </Badge>
+        </div>
       </div>
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
@@ -172,10 +205,35 @@ export function TransactionDetail({ orderId, endpoint, backHref }: Props) {
             <CardTitle>Ringkasan pesanan</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
-            <p>Pelanggan: {order.customer_name || "—"}</p>
-            <p>Dibuat: {dateTime(order.created_at)}</p>
-            <p>Dibayar: {dateTime(order.paid_at)}</p>
-            <p>Kedaluwarsa: {dateTime(order.expires_at)}</p>
+            {adminPresentation ? (
+              <>
+                <p>
+                  <span className="text-muted-foreground">Pelanggan:</span>{" "}
+                  {order.customer_name || "—"}
+                </p>
+                <p>
+                  <span className="text-muted-foreground">Dibuat:</span>{" "}
+                  {dateTime(order.created_at)}
+                </p>
+                <p>
+                  <span className="text-muted-foreground">Dibayar:</span>{" "}
+                  {dateTime(order.paid_at)}
+                </p>
+                <p>
+                  <span className="text-muted-foreground">
+                    Batas pembayaran:
+                  </span>{" "}
+                  {dateTime(order.expires_at)}
+                </p>
+              </>
+            ) : (
+              <>
+                <p>Pelanggan: {order.customer_name || "—"}</p>
+                <p>Dibuat: {dateTime(order.created_at)}</p>
+                <p>Dibayar: {dateTime(order.paid_at)}</p>
+                <p>Kedaluwarsa: {dateTime(order.expires_at)}</p>
+              </>
+            )}
             {order.cancelled_at && (
               <p>Dibatalkan: {dateTime(order.cancelled_at)}</p>
             )}

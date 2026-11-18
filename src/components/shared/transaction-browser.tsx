@@ -53,7 +53,12 @@ type Transaction = {
   paid_at: string | null;
   payments: Payment[];
 };
-type Props = { endpoint: string; detailRoot: string; canCancel?: boolean };
+type Props = {
+  endpoint: string;
+  detailRoot: string;
+  canCancel?: boolean;
+  adminPresentation?: boolean;
+};
 const statusLabels: Record<string, string> = {
   PENDING: "Menunggu",
   PAID: "Dibayar",
@@ -87,6 +92,7 @@ export function TransactionBrowser({
   endpoint,
   detailRoot,
   canCancel = false,
+  adminPresentation = false,
 }: Props) {
   const [items, setItems] = useState<Transaction[]>([]);
   const [page, setPage] = useState(1);
@@ -102,8 +108,14 @@ export function TransactionBrowser({
   const [reason, setReason] = useState("");
   const [reasonOther, setReasonOther] = useState("");
   const [cancelling, setCancelling] = useState(false);
+  const invalidDateRange = Boolean(from && to && from > to);
 
   const load = useCallback(async () => {
+    if (from && to && from > to) {
+      setError("Tanggal awal harus sama dengan atau sebelum tanggal akhir.");
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError("");
     const params = new URLSearchParams({ page: String(page) });
@@ -141,6 +153,33 @@ export function TransactionBrowser({
     setPage(1);
     setSearch(query.trim());
   };
+  const orderStatusLabel = (value: string) =>
+    ({
+      PENDING_PAYMENT: "Menunggu pembayaran",
+      PAID: "Dikonfirmasi",
+      CANCELLED: "Dibatalkan",
+      EXPIRED: "Kedaluwarsa",
+    })[value] ?? value;
+  const cancelButton = (item: Transaction) =>
+    canCancel &&
+    item.order_status === "PENDING_PAYMENT" &&
+    item.payment_status === "PENDING" ? (
+      <Button
+        variant="destructive"
+        size="sm"
+        onClick={() => {
+          setReason("");
+          setReasonOther("");
+          setSelected(item);
+        }}
+      >
+        Batalkan
+      </Button>
+    ) : (
+      <Button asChild variant="outline" size="sm">
+        <Link href={`${detailRoot}/${item.id}`}>Detail</Link>
+      </Button>
+    );
   const submitCancel = async () => {
     if (!selected || !reason) return;
     setCancelling(true);
@@ -177,7 +216,7 @@ export function TransactionBrowser({
     <div className="space-y-5">
       <form
         onSubmit={submitSearch}
-        className="grid gap-3 rounded-xl border bg-card p-4 md:grid-cols-[minmax(14rem,1fr)_12rem_10rem_10rem_auto] md:items-end"
+        className="grid gap-3 rounded-xl border bg-card p-4 sm:grid-cols-2 lg:grid-cols-[minmax(14rem,1fr)_12rem_10rem_10rem_auto] lg:items-end"
       >
         <div className="space-y-2">
           <Label htmlFor="transaction-search">Nomor pesanan</Label>
@@ -215,11 +254,14 @@ export function TransactionBrowser({
           </Select>
         </div>
         <div className="space-y-2">
-          <Label htmlFor="transaction-from">Dari tanggal</Label>
+          <Label htmlFor="transaction-from">
+            {adminPresentation ? "Dari tanggal operasional" : "Dari tanggal"}
+          </Label>
           <Input
             id="transaction-from"
             type="date"
             value={from}
+            aria-invalid={invalidDateRange}
             onChange={(e) => {
               setFrom(e.target.value);
               setPage(1);
@@ -227,11 +269,16 @@ export function TransactionBrowser({
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="transaction-to">Sampai tanggal</Label>
+          <Label htmlFor="transaction-to">
+            {adminPresentation
+              ? "Sampai tanggal operasional"
+              : "Sampai tanggal"}
+          </Label>
           <Input
             id="transaction-to"
             type="date"
             value={to}
+            aria-invalid={invalidDateRange}
             onChange={(e) => {
               setTo(e.target.value);
               setPage(1);
@@ -241,6 +288,14 @@ export function TransactionBrowser({
         <Button type="submit">
           <Search /> Cari
         </Button>
+        {invalidDateRange && (
+          <p
+            role="alert"
+            className="text-sm text-destructive sm:col-span-2 lg:col-span-5"
+          >
+            Tanggal awal harus sama dengan atau sebelum tanggal akhir.
+          </p>
+        )}
       </form>
       <Card>
         <CardContent className="p-0">
@@ -265,79 +320,161 @@ export function TransactionBrowser({
               Tidak ada transaksi yang cocok.
             </p>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Pesanan</TableHead>
-                  <TableHead>Meja</TableHead>
-                  <TableHead>Tanggal operasional</TableHead>
-                  <TableHead>Waktu bayar</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Total</TableHead>
-                  <TableHead>Aksi</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {items.map((item) => (
-                  <TableRow key={item.id}>
-                    <TableCell>
-                      <Link
-                        className="font-medium text-primary hover:underline"
-                        href={`${detailRoot}/${item.id}`}
-                      >
-                        {item.order_number}
-                      </Link>
-                      <div className="text-xs text-muted-foreground">
-                        {item.customer_name || "Pelanggan"}
+            <>
+              {adminPresentation && (
+                <div className="divide-y xl:hidden">
+                  {items.map((item) => (
+                    <article key={item.id} className="space-y-3 p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <Link
+                            className="font-semibold text-primary hover:underline"
+                            href={`${detailRoot}/${item.id}`}
+                          >
+                            {item.order_number}
+                          </Link>
+                          <p className="truncate text-sm text-muted-foreground">
+                            {item.customer_name || "Pelanggan"} · Meja{" "}
+                            {String(item.table_number_snapshot).padStart(
+                              2,
+                              "0",
+                            )}
+                          </p>
+                        </div>
+                        <strong className="shrink-0 tabular-nums">
+                          {money(item.total_amount)}
+                        </strong>
                       </div>
-                    </TableCell>
-                    <TableCell>
-                      Meja {String(item.table_number_snapshot).padStart(2, "0")}
-                    </TableCell>
-                    <TableCell>
-                      {item.operational_date.split("-").reverse().join("/")}
-                    </TableCell>
-                    <TableCell>{dateTime(item.paid_at)}</TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={
-                          item.payment_status === "PAID"
-                            ? "default"
-                            : item.payment_status === "PENDING"
-                              ? "secondary"
-                              : "outline"
-                        }
-                      >
-                        {statusLabels[item.payment_status] ??
-                          item.payment_status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {money(item.total_amount)}
-                    </TableCell>
-                    <TableCell>
-                      {canCancel && item.payment_status === "PENDING" ? (
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={() => {
-                            setReason("");
-                            setReasonOther("");
-                            setSelected(item);
-                          }}
+                      <div className="flex flex-wrap gap-2">
+                        <Badge
+                          variant={
+                            item.order_status === "PAID"
+                              ? "default"
+                              : item.order_status === "PENDING_PAYMENT"
+                                ? "secondary"
+                                : "outline"
+                          }
                         >
-                          Batalkan
-                        </Button>
-                      ) : (
-                        <Button asChild variant="outline" size="sm">
-                          <Link href={`${detailRoot}/${item.id}`}>Detail</Link>
-                        </Button>
+                          Pesanan · {orderStatusLabel(item.order_status)}
+                        </Badge>
+                        <Badge
+                          variant={
+                            item.payment_status === "PAID"
+                              ? "default"
+                              : item.payment_status === "PENDING"
+                                ? "secondary"
+                                : "outline"
+                          }
+                        >
+                          Pembayaran ·{" "}
+                          {statusLabels[item.payment_status] ??
+                            item.payment_status}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {item.payments[item.payments.length - 1]?.method ??
+                          "Metode belum tersedia"}{" "}
+                        · Tanggal operasional{" "}
+                        {item.operational_date.split("-").reverse().join("/")} ·
+                        Dibayar {dateTime(item.paid_at)}
+                      </p>
+                      <div>{cancelButton(item)}</div>
+                    </article>
+                  ))}
+                </div>
+              )}
+              <div
+                className={
+                  adminPresentation
+                    ? "hidden overflow-x-auto xl:block"
+                    : "overflow-x-auto"
+                }
+              >
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Pesanan</TableHead>
+                      {adminPresentation && (
+                        <TableHead>Status pesanan</TableHead>
                       )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                      <TableHead>Meja</TableHead>
+                      <TableHead>Tanggal operasional</TableHead>
+                      <TableHead>Waktu bayar</TableHead>
+                      {adminPresentation && <TableHead>Metode</TableHead>}
+                      <TableHead>
+                        {adminPresentation ? "Status pembayaran" : "Status"}
+                      </TableHead>
+                      <TableHead className="text-right">Total</TableHead>
+                      <TableHead>Aksi</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {items.map((item) => (
+                      <TableRow key={item.id}>
+                        <TableCell>
+                          <Link
+                            className="font-medium text-primary hover:underline"
+                            href={`${detailRoot}/${item.id}`}
+                          >
+                            {item.order_number}
+                          </Link>
+                          <div className="text-xs text-muted-foreground">
+                            {item.customer_name || "Pelanggan"}
+                          </div>
+                        </TableCell>
+                        {adminPresentation && (
+                          <TableCell>
+                            <Badge
+                              variant={
+                                item.order_status === "PAID"
+                                  ? "default"
+                                  : item.order_status === "PENDING_PAYMENT"
+                                    ? "secondary"
+                                    : "outline"
+                              }
+                            >
+                              {orderStatusLabel(item.order_status)}
+                            </Badge>
+                          </TableCell>
+                        )}
+                        <TableCell>
+                          Meja{" "}
+                          {String(item.table_number_snapshot).padStart(2, "0")}
+                        </TableCell>
+                        <TableCell>
+                          {item.operational_date.split("-").reverse().join("/")}
+                        </TableCell>
+                        <TableCell>{dateTime(item.paid_at)}</TableCell>
+                        {adminPresentation && (
+                          <TableCell>
+                            {item.payments[item.payments.length - 1]?.method ??
+                              "—"}
+                          </TableCell>
+                        )}
+                        <TableCell>
+                          <Badge
+                            variant={
+                              item.payment_status === "PAID"
+                                ? "default"
+                                : item.payment_status === "PENDING"
+                                  ? "secondary"
+                                  : "outline"
+                            }
+                          >
+                            {statusLabels[item.payment_status] ??
+                              item.payment_status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {money(item.total_amount)}
+                        </TableCell>
+                        <TableCell>{cancelButton(item)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
           )}
           {!loading && !error && totalPages > 1 && (
             <div className="flex items-center justify-between border-t p-4 text-sm">

@@ -49,8 +49,8 @@ const swatches = [
   { name: "Background", color: "bg-background", value: "#FAF8F5" },
   { name: "Surface muted", color: "bg-secondary", value: "#F3F0EC" },
   { name: "Success", color: "bg-success", value: "#237A4B" },
-  { name: "Warning", color: "bg-warning", value: "#A76716" },
-  { name: "Destructive", color: "bg-destructive", value: "#C43D3D" },
+  { name: "Warning", color: "bg-warning", value: "#86520D" },
+  { name: "Destructive", color: "bg-destructive", value: "#B83232" },
   { name: "Information", color: "bg-information", value: "#2865A6" },
 ];
 
@@ -68,7 +68,7 @@ export default function DesignSystemPage() {
 
       <section aria-labelledby="colors-heading" className="space-y-4">
         <div>
-          <h2 id="colors-heading" className="text-xl font-semibold">
+          <h2 id="colors-heading" className="text-section-title font-semibold">
             Warna
           </h2>
           <p className="text-sm text-muted-foreground">

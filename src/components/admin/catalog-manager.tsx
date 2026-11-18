@@ -13,6 +13,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   Card,
   CardAction,
@@ -90,6 +91,9 @@ export function CatalogManager() {
   );
   const [showTemplatePreview, setShowTemplatePreview] = useState(false);
   const [categoryName, setCategoryName] = useState("");
+  const [menuSearch, setMenuSearch] = useState("");
+  const [menuCategoryFilter, setMenuCategoryFilter] = useState("ALL");
+  const [menuStatusFilter, setMenuStatusFilter] = useState("ALL");
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [categoryToDelete, setCategoryToDelete] = useState<Category | null>(
@@ -103,11 +107,14 @@ export function CatalogManager() {
   const [draft, setDraft] = useState<MenuDraft | null>(null);
   const [imagePreview, setImagePreview] = useState("");
   const [message, setMessage] = useState("");
+  const [messageIsError, setMessageIsError] = useState(false);
   const [busy, setBusy] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const [draggedCategory, setDraggedCategory] = useState<string | null>(null);
   const [draggedMenu, setDraggedMenu] = useState<string | null>(null);
+  const [confirmDraftDiscard, setConfirmDraftDiscard] = useState(false);
+  const [originalDraft, setOriginalDraft] = useState("");
 
   const load = useCallback(async () => {
     const [categoryResponse, menuResponse, templateResponse] =
@@ -128,27 +135,74 @@ export function CatalogManager() {
       ...templateResult.data.custom,
     ]);
   }, []);
+  const filteredMenus = menus.filter((menu) => {
+    const matchesSearch =
+      `${menu.name} ${menu.description} ${menu.categoryName}`
+        .toLocaleLowerCase("id-ID")
+        .includes(menuSearch.trim().toLocaleLowerCase("id-ID"));
+    const matchesCategory =
+      menuCategoryFilter === "ALL" || menu.category_id === menuCategoryFilter;
+    const matchesStatus =
+      menuStatusFilter === "ALL" ||
+      (menuStatusFilter === "ACTIVE" ? menu.is_active : !menu.is_active);
+    return matchesSearch && matchesCategory && matchesStatus;
+  });
+  const hasUnsavedDraftChanges = Boolean(
+    draft && JSON.stringify(draft) !== originalDraft,
+  );
 
   // Initial state is loaded from the API, an external system.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    void load().catch((error: unknown) =>
-      setMessage(error instanceof Error ? error.message : "Gagal memuat data."),
-    ).finally(() => setInitialLoading(false));
+    void load()
+      .catch((error: unknown) => {
+        setMessageIsError(true);
+        setMessage(
+          error instanceof Error ? error.message : "Gagal memuat data.",
+        );
+      })
+      .finally(() => setInitialLoading(false));
   }, [load]);
 
-  if (initialLoading) return (
-    <section aria-busy="true" aria-label="Memuat kategori dan menu" className="mt-6 space-y-6">
-      <span className="sr-only" role="status">Memuat kategori dan menu…</span>
-      {["categories", "menus"].map((section) => (
-        <div key={section} aria-hidden="true" className="space-y-3 rounded-xl border bg-card p-5">
-          <Skeleton className="h-5 w-36" />
-          <Skeleton className="h-4 w-2/3" />
-          {[0, 1, 2].map((item) => <Skeleton key={item} className="h-12 w-full" />)}
-        </div>
-      ))}
-    </section>
-  );
+  async function retryLoad() {
+    setInitialLoading(true);
+    try {
+      await load();
+      setMessage("");
+      setMessageIsError(false);
+    } catch (error) {
+      setMessageIsError(true);
+      setMessage(error instanceof Error ? error.message : "Gagal memuat data.");
+    } finally {
+      setInitialLoading(false);
+    }
+  }
+
+  if (initialLoading)
+    return (
+      <section
+        aria-busy="true"
+        aria-label="Memuat kategori dan menu"
+        className="mt-6 space-y-6"
+      >
+        <span className="sr-only" role="status">
+          Memuat kategori dan menu…
+        </span>
+        {["categories", "menus"].map((section) => (
+          <div
+            key={section}
+            aria-hidden="true"
+            className="space-y-3 rounded-xl border bg-card p-5"
+          >
+            <Skeleton className="h-5 w-36" />
+            <Skeleton className="h-4 w-2/3" />
+            {[0, 1, 2].map((item) => (
+              <Skeleton key={item} className="h-12 w-full" />
+            ))}
+          </div>
+        ))}
+      </section>
+    );
 
   async function mutate(url: string, method: string, body?: unknown) {
     if (busy) return false;
@@ -163,10 +217,12 @@ export function CatalogManager() {
         body: body === undefined ? undefined : JSON.stringify(body),
       });
       const result = await response.json();
+      setMessageIsError(!response.ok);
       setMessage(result.message ?? "Terjadi kesalahan.");
       if (response.ok) await load();
       return response.ok;
     } catch {
+      setMessageIsError(true);
       setMessage("Terjadi kesalahan saat menyimpan perubahan.");
       return false;
     } finally {
@@ -181,9 +237,11 @@ export function CatalogManager() {
       return;
     }
     setImagePreview("");
+    setMessage("");
+    setMessageIsError(false);
     setSelectedTemplateId("");
     setShowTemplatePreview(false);
-    setDraft({
+    const nextDraft: MenuDraft = {
       category_id: first.id,
       name: "",
       description: "",
@@ -192,14 +250,18 @@ export function CatalogManager() {
       is_active: true,
       sort_order: menus.filter((menu) => menu.category_id === first.id).length,
       configuration: emptyConfiguration,
-    });
+    };
+    setOriginalDraft(JSON.stringify(nextDraft));
+    setDraft(nextDraft);
   }
 
   function editMenu(menu: Menu) {
     setSelectedTemplateId("");
     setShowTemplatePreview(false);
     setImagePreview(menu.image_path ? imageUrl(menu.image_path) : "");
-    setDraft({
+    setMessage("");
+    setMessageIsError(false);
+    const nextDraft: MenuDraft = {
       id: menu.id,
       category_id: menu.category_id,
       name: menu.name,
@@ -209,7 +271,38 @@ export function CatalogManager() {
       is_active: menu.is_active,
       sort_order: menu.sort_order,
       configuration: menu.configuration,
-    });
+    };
+    setOriginalDraft(JSON.stringify(nextDraft));
+    setDraft(nextDraft);
+  }
+
+  function requestCloseDraft() {
+    if (hasUnsavedDraftChanges) {
+      setConfirmDraftDiscard(true);
+      return;
+    }
+    setDraft(null);
+  }
+
+  function moveMenu(menuId: string, direction: -1 | 1) {
+    const menu = menus.find((item) => item.id === menuId);
+    if (!menu) return;
+    const sameCategory = menus.filter(
+      (item) => item.category_id === menu.category_id,
+    );
+    const position = sameCategory.findIndex((item) => item.id === menuId);
+    const neighbor = sameCategory[position + direction];
+    if (neighbor) void reorderMenu(menu.id, neighbor.id);
+  }
+
+  function canMoveMenu(menuId: string, direction: -1 | 1) {
+    const menu = menus.find((item) => item.id === menuId);
+    if (!menu) return false;
+    const sameCategory = menus.filter(
+      (item) => item.category_id === menu.category_id,
+    );
+    const position = sameCategory.findIndex((item) => item.id === menuId);
+    return Boolean(sameCategory[position + direction]);
   }
 
   async function uploadImage(file: File) {
@@ -223,6 +316,7 @@ export function CatalogManager() {
         body: form,
       });
       const result = await response.json();
+      setMessageIsError(!response.ok);
       setMessage(result.message ?? "Foto belum dapat diunggah.");
       if (response.ok) {
         setDraft((current) =>
@@ -231,6 +325,7 @@ export function CatalogManager() {
         setImagePreview(result.data.publicUrl);
       }
     } catch {
+      setMessageIsError(true);
       setMessage("Terjadi kesalahan saat mengunggah foto.");
     } finally {
       setUploadingImage(false);
@@ -354,363 +449,487 @@ export function CatalogManager() {
   }
 
   return (
-    <div aria-busy={busy || uploadingImage || undefined} className="mt-6 space-y-8">
-      <Card>
-        <CardHeader>
-          <CardTitle>Kategori</CardTitle>
+    <div
+      aria-busy={busy || uploadingImage || undefined}
+      className="mt-6 space-y-8"
+    >
+      <div hidden={Boolean(draft)} className="space-y-8">
+        <Card>
+          <CardHeader className="flex-col items-start gap-3 sm:flex-row sm:items-center">
+            <CardTitle>Kategori</CardTitle>
 
-          <CardAction>
-            <Button onClick={() => openCategoryDialog()}>
-              Tambah kategori
-            </Button>
-          </CardAction>
-        </CardHeader>
-        <CardContent>
-          <ul className="divide-y">
-            {categories.map((category, index) => (
-              <li
-                key={category.id}
-                draggable
-                onDragStart={() => setDraggedCategory(category.id)}
-                onDragOver={(event) => event.preventDefault()}
-                onDrop={() => {
-                  if (draggedCategory && draggedCategory !== category.id)
-                    void reorderCategory(draggedCategory, category.id);
-                  setDraggedCategory(null);
-                }}
-                className="flex flex-wrap items-center gap-2 py-3 text-sm"
-              >
-                <span className="min-w-20 flex-1 font-medium">
-                  {category.name}{" "}
-                  <span className="font-normal text-neutral-500">
-                    ({category.menuCount ?? 0} menu{" "}
-                    {category.is_active ? "Aktif" : "Nonaktif"})
-                  </span>
-                </span>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => openCategoryDialog(category)}
+            <CardAction>
+              <Button onClick={() => openCategoryDialog()}>
+                Tambah kategori
+              </Button>
+            </CardAction>
+          </CardHeader>
+          <CardContent>
+            <p className="mb-3 text-sm text-muted-foreground">
+              Kategori nonaktif menyembunyikan semua menu di dalamnya dari
+              katalog pelanggan.
+            </p>
+            <ul className="divide-y">
+              {categories.map((category, index) => (
+                <li
+                  key={category.id}
+                  draggable
+                  onDragStart={() => setDraggedCategory(category.id)}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={() => {
+                    if (draggedCategory && draggedCategory !== category.id)
+                      void reorderCategory(draggedCategory, category.id);
+                    setDraggedCategory(null);
+                  }}
+                  className="flex flex-wrap items-center gap-2 py-3 text-sm"
                 >
-                  Ubah
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  disabled={busy}
-                  onClick={() =>
+                  <div className="min-w-40 flex-1 space-y-1">
+                    <p className="font-medium">{category.name}</p>
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                      <span>{category.menuCount ?? 0} menu</span>
+                      <Badge
+                        variant={category.is_active ? "default" : "outline"}
+                      >
+                        {category.is_active ? "Aktif" : "Nonaktif"}
+                      </Badge>
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => openCategoryDialog(category)}
+                  >
+                    Ubah
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={busy}
+                    onClick={() =>
+                      void mutate(
+                        `/api/v1/admin/categories/${category.id}`,
+                        "PATCH",
+                        { isActive: !category.is_active },
+                      )
+                    }
+                  >
+                    {category.is_active ? "Nonaktifkan" : "Aktifkan"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      const next = categories[index - 1];
+                      if (next) void reorderCategory(category.id, next.id);
+                    }}
+                    disabled={busy || index === 0}
+                    aria-label="Naikkan urutan kategori"
+                  >
+                    ↑ Naikkan
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      const next = categories[index + 1];
+                      if (next) void reorderCategory(category.id, next.id);
+                    }}
+                    disabled={busy || index === categories.length - 1}
+                    aria-label="Turunkan urutan kategori"
+                  >
+                    ↓ Turunkan
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    disabled={busy}
+                    onClick={() => setCategoryToDelete(category)}
+                  >
+                    Hapus
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+
+        <Dialog
+          open={categoryDialogOpen}
+          onOpenChange={(open) => {
+            setCategoryDialogOpen(open);
+            if (!open) setEditingCategory(null);
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>
+                {editingCategory ? "Ubah kategori" : "Tambah kategori"}
+              </DialogTitle>
+              <DialogDescription>
+                {editingCategory
+                  ? "Ubah nama kategori menu."
+                  : "Buat kategori untuk mengelompokkan menu."}
+              </DialogDescription>
+            </DialogHeader>
+            <form
+              id="category-form"
+              className="space-y-2"
+              onSubmit={saveCategory}
+            >
+              <Label htmlFor="category-name">Nama kategori</Label>
+              <Input
+                id="category-name"
+                required
+                maxLength={100}
+                value={categoryName}
+                onChange={(event) => setCategoryName(event.target.value)}
+                autoFocus
+              />
+            </form>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setCategoryDialogOpen(false)}
+              >
+                Batal
+              </Button>
+              <Button type="submit" form="category-form" loading={busy}>
+                {editingCategory ? "Simpan perubahan" : "Tambah kategori"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <AlertDialog
+          open={categoryToDelete !== null}
+          onOpenChange={(open) => {
+            if (!open) setCategoryToDelete(null);
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Hapus kategori?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Kategori “{categoryToDelete?.name}” hanya dapat dihapus jika
+                tidak memiliki menu.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Batal</AlertDialogCancel>
+              <AlertDialogAction
+                variant="destructive"
+                onClick={() => {
+                  const category = categoryToDelete;
+                  setCategoryToDelete(null);
+                  if (category)
                     void mutate(
                       `/api/v1/admin/categories/${category.id}`,
-                      "PATCH",
-                      { isActive: !category.is_active },
-                    )
-                  }
-                >
-                  {category.is_active ? "Nonaktifkan" : "Aktifkan"}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => {
-                    const next = categories[index - 1];
-                    if (next) void reorderCategory(category.id, next.id);
-                  }}
-                  disabled={busy || index === 0}
-                  aria-label="Naikkan urutan kategori"
-                >
-                  ↑
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => {
-                    const next = categories[index + 1];
-                    if (next) void reorderCategory(category.id, next.id);
-                  }}
-                  disabled={busy || index === categories.length - 1}
-                  aria-label="Turunkan urutan kategori"
-                >
-                  ↓
-                </Button>
-                <Button
-                  size="sm"
-                  variant="destructive"
-                  disabled={busy}
-                  onClick={() => setCategoryToDelete(category)}
-                >
-                  Hapus
-                </Button>
-              </li>
-            ))}
-          </ul>
-        </CardContent>
-      </Card>
-
-      <Dialog
-        open={categoryDialogOpen}
-        onOpenChange={(open) => {
-          setCategoryDialogOpen(open);
-          if (!open) setEditingCategory(null);
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {editingCategory ? "Ubah kategori" : "Tambah kategori"}
-            </DialogTitle>
-            <DialogDescription>
-              {editingCategory
-                ? "Ubah nama kategori menu."
-                : "Buat kategori untuk mengelompokkan menu."}
-            </DialogDescription>
-          </DialogHeader>
-          <form
-            id="category-form"
-            className="space-y-2"
-            onSubmit={saveCategory}
-          >
-            <Label htmlFor="category-name">Nama kategori</Label>
-            <Input
-              id="category-name"
-              required
-              maxLength={100}
-              value={categoryName}
-              onChange={(event) => setCategoryName(event.target.value)}
-              autoFocus
-            />
-          </form>
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setCategoryDialogOpen(false)}
-            >
-              Batal
-            </Button>
-            <Button type="submit" form="category-form" loading={busy}>
-              {editingCategory ? "Simpan perubahan" : "Tambah kategori"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <AlertDialog
-        open={categoryToDelete !== null}
-        onOpenChange={(open) => {
-          if (!open) setCategoryToDelete(null);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Hapus kategori?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Kategori “{categoryToDelete?.name}” hanya dapat dihapus jika tidak
-              memiliki menu.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Batal</AlertDialogCancel>
-            <AlertDialogAction
-              variant="destructive"
-              onClick={() => {
-                const category = categoryToDelete;
-                setCategoryToDelete(null);
-                if (category)
-                  void mutate(
-                    `/api/v1/admin/categories/${category.id}`,
-                    "DELETE",
-                  );
-              }}
-            >
-              Hapus kategori
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <Card>
-        <CardHeader className="flex-row items-center justify-between">
-          <CardTitle>Menu</CardTitle>
-          <CardDescription>
-            Menu dalam kategori nonaktif tidak tampil di katalog pelanggan.
-          </CardDescription>
-          <CardAction>
-            <Button onClick={newMenu} disabled={!categories.length}>
-              Tambah menu
-            </Button>
-          </CardAction>
-        </CardHeader>
-        <CardContent>
-          {message && (
-            <p role="status" className="mt-3 text-sm text-neutral-700">
-              {message}
-            </p>
-          )}
-          <div className="mt-4 space-y-3">
-            {menus.map((menu, index) => (
-              <Card
-                key={menu.id}
-                draggable
-                onDragStart={() => setDraggedMenu(menu.id)}
-                onDragOver={(event) => event.preventDefault()}
-                onDrop={() => {
-                  if (draggedMenu && draggedMenu !== menu.id)
-                    void reorderMenu(draggedMenu, menu.id);
-                  setDraggedMenu(null);
+                      "DELETE",
+                    );
                 }}
-                className="flex flex-wrap items-center gap-3 p-3"
               >
-                <Image
-                  src={
-                    menu.image_path
-                      ? imageUrl(menu.image_path)
-                      : "https://placehold.co/400"
-                  }
-                  alt={menu.name}
-                  width={56}
-                  height={56}
-                  unoptimized
-                  className="h-14 w-14 rounded object-cover"
-                />
+                Hapus kategori
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
-                <div className="min-w-40 flex-1">
-                  <h3 className="font-medium">{menu.name}</h3>
-                  <p className="text-sm text-muted-foreground">
-                    {menu.categoryName} · {rupiah.format(menu.price)} ·{" "}
-                    {menu.is_active ? "Aktif" : "Nonaktif"}
-                  </p>
-                </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => editMenu(menu)}
-                >
-                  Edit
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  disabled={busy}
-                  onClick={() =>
-                    void mutate(`/api/v1/admin/menus/${menu.id}`, "PATCH", {
-                      categoryId: menu.category_id,
-                      name: menu.name,
-                      description: menu.description,
-                      price: menu.price,
-                      imagePath: menu.image_path,
-                      isActive: !menu.is_active,
-                      sortOrder: menu.sort_order,
-                      configuration: menu.configuration,
-                    })
-                  }
-                >
-                  {menu.is_active ? "Nonaktifkan" : "Aktifkan"}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => {
-                    const inCategory = menus.filter(
-                      (item) => item.category_id === menu.category_id,
-                    );
-                    const position = inCategory.findIndex(
-                      (item) => item.id === menu.id,
-                    );
-                    const other = inCategory[position - 1];
-                    if (other) void reorderMenu(menu.id, other.id);
-                  }}
-                  disabled={
-                    busy || !menus
-                      .slice(0, index)
-                      .some((item) => item.category_id === menu.category_id)
-                  }
-                  aria-label="Naikkan urutan menu"
-                >
-                  ↑
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => {
-                    const inCategory = menus.filter(
-                      (item) => item.category_id === menu.category_id,
-                    );
-                    const position = inCategory.findIndex(
-                      (item) => item.id === menu.id,
-                    );
-                    const other = inCategory[position + 1];
-                    if (other) void reorderMenu(menu.id, other.id);
-                  }}
-                  disabled={
-                    busy || !menus
-                      .slice(index + 1)
-                      .some((item) => item.category_id === menu.category_id)
-                  }
-                  aria-label="Turunkan urutan menu"
-                >
-                  ↓
-                </Button>
-                <Button
-                  size="sm"
-                  variant="destructive"
-                  onClick={() => setMenuToDelete(menu)}
-                >
-                  Hapus
-                </Button>
-              </Card>
-            ))}
-            {!menus.length && (
-              <p className="rounded-lg bg-secondary p-6 text-center text-sm text-muted-foreground">
-                Belum ada menu.
-              </p>
+        <Card>
+          <CardHeader className="flex-col items-start gap-3 sm:flex-row sm:items-center">
+            <CardTitle>Menu</CardTitle>
+            <CardDescription>
+              Menu dalam kategori nonaktif tidak tampil di katalog pelanggan.
+            </CardDescription>
+            <CardAction>
+              <Button onClick={newMenu} disabled={!categories.length}>
+                Tambah menu
+              </Button>
+            </CardAction>
+          </CardHeader>
+          <CardContent>
+            {message && (
+              <div
+                role={messageIsError ? "alert" : "status"}
+                className={`flex flex-wrap items-center justify-between gap-3 rounded-md px-3 py-2 text-sm ${messageIsError ? "bg-destructive/5 text-destructive" : "bg-muted text-foreground"}`}
+              >
+                <span>{message}</span>
+                {messageIsError && !categories.length && !menus.length && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => void retryLoad()}
+                  >
+                    Coba lagi
+                  </Button>
+                )}
+              </div>
             )}
-          </div>
-        </CardContent>
-      </Card>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(14rem,1fr)_12rem_12rem_auto] xl:items-end">
+              <div className="space-y-2">
+                <Label htmlFor="menu-search">Cari menu</Label>
+                <Input
+                  id="menu-search"
+                  value={menuSearch}
+                  onChange={(event) => setMenuSearch(event.target.value)}
+                  placeholder="Nama, deskripsi, atau kategori"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="menu-category-filter">Kategori</Label>
+                <Select
+                  value={menuCategoryFilter}
+                  onValueChange={setMenuCategoryFilter}
+                >
+                  <SelectTrigger id="menu-category-filter">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">Semua kategori</SelectItem>
+                    {categories.map((category) => (
+                      <SelectItem key={category.id} value={category.id}>
+                        {category.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="menu-status-filter">Status</Label>
+                <Select
+                  value={menuStatusFilter}
+                  onValueChange={setMenuStatusFilter}
+                >
+                  <SelectTrigger id="menu-status-filter">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">Semua status</SelectItem>
+                    <SelectItem value="ACTIVE">Aktif</SelectItem>
+                    <SelectItem value="INACTIVE">Nonaktif</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <p
+                className="pb-2 text-sm text-muted-foreground"
+                aria-live="polite"
+              >
+                {filteredMenus.length} dari {menus.length} menu
+              </p>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm text-muted-foreground">
+                Urutkan dengan tarik dan lepas atau gunakan Naikkan/Turunkan.
+                Perubahan urutan berlaku pada katalog pelanggan.
+                {(menuSearch.trim() ||
+                  menuCategoryFilter !== "ALL" ||
+                  menuStatusFilter !== "ALL") &&
+                  " Hapus filter untuk mengubah urutan."}
+              </p>
+              {(menuSearch ||
+                menuCategoryFilter !== "ALL" ||
+                menuStatusFilter !== "ALL") && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setMenuSearch("");
+                    setMenuCategoryFilter("ALL");
+                    setMenuStatusFilter("ALL");
+                  }}
+                >
+                  Hapus filter
+                </Button>
+              )}
+            </div>
+            <div className="mt-4 space-y-3">
+              {filteredMenus.map((menu) => (
+                <Card
+                  key={menu.id}
+                  draggable
+                  onDragStart={() => setDraggedMenu(menu.id)}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={() => {
+                    if (draggedMenu && draggedMenu !== menu.id)
+                      void reorderMenu(draggedMenu, menu.id);
+                    setDraggedMenu(null);
+                  }}
+                  className="flex flex-row flex-wrap items-center gap-3 p-3"
+                >
+                  <Image
+                    src={
+                      menu.image_path
+                        ? imageUrl(menu.image_path)
+                        : "https://placehold.co/400"
+                    }
+                    alt={menu.name}
+                    width={56}
+                    height={56}
+                    unoptimized
+                    className="h-14 w-14 rounded object-cover"
+                  />
 
-      <Dialog
-        open={draft !== null}
-        onOpenChange={(open) => {
-          if (!open) setDraft(null);
-        }}
-      >
-        {draft && (
-          <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
-            <form
-              onSubmit={async (event) => {
-                event.preventDefault();
-                const body = {
-                  categoryId: draft.category_id,
-                  name: draft.name,
-                  description: draft.description,
-                  price: draft.price,
-                  imagePath: draft.image_path,
-                  isActive: draft.is_active,
-                  sortOrder: draft.sort_order,
-                  configuration: draft.configuration,
-                };
-                if (
-                  await mutate(
-                    draft.id
-                      ? `/api/v1/admin/menus/${draft.id}`
-                      : "/api/v1/admin/menus",
-                    draft.id ? "PATCH" : "POST",
-                    body,
-                  )
+                  <div className="min-w-40 flex-1">
+                    <h3 className="font-medium">{menu.name}</h3>
+                    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
+                      <span>{menu.categoryName}</span>
+                      <span aria-hidden="true">·</span>
+                      <span>Harga dasar {rupiah.format(menu.price)}</span>
+                      <Badge variant={menu.is_active ? "default" : "outline"}>
+                        {menu.is_active ? "Aktif" : "Nonaktif"}
+                      </Badge>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Harga dan ketersediaan ini berlaku untuk pesanan baru.
+                      Riwayat pesanan tetap memakai snapshot transaksi.
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => editMenu(menu)}
+                  >
+                    Edit
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={busy}
+                    onClick={() =>
+                      void mutate(`/api/v1/admin/menus/${menu.id}`, "PATCH", {
+                        categoryId: menu.category_id,
+                        name: menu.name,
+                        description: menu.description,
+                        price: menu.price,
+                        imagePath: menu.image_path,
+                        isActive: !menu.is_active,
+                        sortOrder: menu.sort_order,
+                        configuration: menu.configuration,
+                      })
+                    }
+                  >
+                    {menu.is_active ? "Nonaktifkan" : "Aktifkan"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => moveMenu(menu.id, -1)}
+                    disabled={
+                      busy ||
+                      Boolean(
+                        menuSearch ||
+                        menuCategoryFilter !== "ALL" ||
+                        menuStatusFilter !== "ALL",
+                      ) ||
+                      !canMoveMenu(menu.id, -1)
+                    }
+                    aria-label={`Naikkan urutan ${menu.name}`}
+                  >
+                    ↑ Naikkan
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => moveMenu(menu.id, 1)}
+                    disabled={
+                      busy ||
+                      Boolean(
+                        menuSearch ||
+                        menuCategoryFilter !== "ALL" ||
+                        menuStatusFilter !== "ALL",
+                      ) ||
+                      !canMoveMenu(menu.id, 1)
+                    }
+                    aria-label={`Turunkan urutan ${menu.name}`}
+                  >
+                    ↓ Turunkan
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => setMenuToDelete(menu)}
+                  >
+                    Hapus
+                  </Button>
+                </Card>
+              ))}
+              {!filteredMenus.length && (
+                <p className="rounded-lg bg-secondary p-6 text-center text-sm text-muted-foreground">
+                  {menus.length
+                    ? "Tidak ada menu yang cocok dengan pencarian atau filter."
+                    : "Belum ada menu."}
+                </p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {draft && (
+        <section className="space-y-6" aria-labelledby="menu-editor-title">
+          <header className="flex flex-wrap items-start justify-between gap-4 border-b pb-5">
+            <div className="space-y-1">
+              <h2 id="menu-editor-title" className="text-2xl font-semibold">
+                {draft.id ? "Edit menu" : "Menu baru"}
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                Informasi dan pilihan menu yang dilihat pelanggan.
+              </p>
+              {hasUnsavedDraftChanges && (
+                <p role="status" className="text-sm text-warning">
+                  Perubahan belum disimpan.
+                </p>
+              )}
+              {message && (
+                <p
+                  role={messageIsError ? "alert" : "status"}
+                  className={
+                    messageIsError
+                      ? "text-sm text-destructive"
+                      : "text-sm text-success"
+                  }
+                >
+                  {message}
+                </p>
+              )}
+            </div>
+            <Button type="button" variant="outline" onClick={requestCloseDraft}>
+              Kembali ke katalog
+            </Button>
+          </header>
+          <form
+            onSubmit={async (event) => {
+              event.preventDefault();
+              const body = {
+                categoryId: draft.category_id,
+                name: draft.name,
+                description: draft.description,
+                price: draft.price,
+                imagePath: draft.image_path,
+                isActive: draft.is_active,
+                sortOrder: draft.sort_order,
+                configuration: draft.configuration,
+              };
+              if (
+                await mutate(
+                  draft.id
+                    ? `/api/v1/admin/menus/${draft.id}`
+                    : "/api/v1/admin/menus",
+                  draft.id ? "PATCH" : "POST",
+                  body,
                 )
-                  setDraft(null);
-              }}
-              className="space-y-5"
-            >
-              <DialogHeader>
-                <DialogTitle>
-                  {draft.id ? "Edit menu" : "Menu baru"}
-                </DialogTitle>
-                <DialogDescription>
-                  Atur informasi menu dan opsi yang dapat dipilih pelanggan.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-4 md:grid-cols-2">
+              )
+                setDraft(null);
+            }}
+            className="space-y-5"
+          >
+            <section aria-labelledby="basic-menu-heading" className="space-y-4">
+              <h3 id="basic-menu-heading" className="text-lg font-semibold">
+                Informasi dasar
+              </h3>
+              <div className="grid max-w-4xl gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="menu-name">Nama menu</Label>
                   <Input
@@ -750,6 +969,13 @@ export function CatalogManager() {
                     </SelectContent>
                   </Select>
                 </div>
+                <div className="space-y-1 border-t pt-3 md:col-span-2">
+                  <h4 className="font-medium">Harga dan ketersediaan</h4>
+                  <p className="text-sm text-muted-foreground">
+                    Perubahan berlaku untuk pesanan baru. Riwayat pesanan
+                    mempertahankan snapshot transaksi.
+                  </p>
+                </div>
                 <div className="space-y-2">
                   <Label htmlFor="menu-price">Harga dasar (Rp)</Label>
                   <Input
@@ -763,6 +989,10 @@ export function CatalogManager() {
                       setDraft({ ...draft, price: Number(event.target.value) })
                     }
                   />
+                  <p className="text-xs text-muted-foreground">
+                    Harga untuk pesanan baru. Order historis tetap menggunakan
+                    snapshot harga saat transaksi.
+                  </p>
                 </div>
                 <div className="flex items-center gap-2 pt-6">
                   <Checkbox
@@ -772,7 +1002,9 @@ export function CatalogManager() {
                       setDraft({ ...draft, is_active: checked === true })
                     }
                   />
-                  <Label htmlFor="menu-active">Menu aktif</Label>
+                  <Label htmlFor="menu-active">
+                    Tersedia di katalog pelanggan
+                  </Label>
                 </div>
                 <div className="space-y-2 md:col-span-2">
                   <Label htmlFor="menu-description">Deskripsi</Label>
@@ -787,6 +1019,7 @@ export function CatalogManager() {
                   />
                 </div>
                 <div className="space-y-2 text-sm md:col-span-2">
+                  <h4 className="font-medium">Foto menu</h4>
                   <Label htmlFor="menu-image">
                     Foto menu (JPG, PNG, WebP; maks 2 MB)
                   </Label>
@@ -800,7 +1033,11 @@ export function CatalogManager() {
                       if (file) void uploadImage(file);
                     }}
                   />
-                  {uploadingImage && <p role="status" className="text-xs text-muted-foreground">Mengunggah foto…</p>}
+                  {uploadingImage && (
+                    <p role="status" className="text-xs text-muted-foreground">
+                      Mengunggah foto…
+                    </p>
+                  )}
                   {imagePreview && (
                     <div className="mt-2 flex items-center gap-3">
                       <Image
@@ -826,146 +1063,154 @@ export function CatalogManager() {
                   )}
                 </div>
               </div>
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">
-                    Template konfigurasi
-                  </CardTitle>
-                  <p className="text-sm text-muted-foreground">
-                    Menerapkan template akan menyalin konfigurasi ke menu ini.
-                  </p>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="menu-template">Pilih template</Label>
-                      <Select
-                        value={selectedTemplateId}
-                        onValueChange={(value) => {
-                          setSelectedTemplateId(value);
-                          setShowTemplatePreview(false);
-                        }}
-                      >
-                        <SelectTrigger id="menu-template">
-                          <SelectValue placeholder="Pilih template" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {templates.map((template) => (
-                            <SelectItem key={template.id} value={template.id}>
-                              {template.name}
-                              {template.source ? " · bawaan" : ""}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="template-mode">Mode</Label>
-                      <Select
-                        value={applyMode}
-                        onValueChange={(value) =>
-                          setApplyMode(value as typeof applyMode)
-                        }
-                      >
-                        <SelectTrigger id="template-mode">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="REPLACE_ALL">
-                            Ganti seluruh konfigurasi
+              <p className="text-sm text-muted-foreground">
+                Menu nonaktif atau yang berada dalam kategori nonaktif tidak
+                dapat dipesan pelanggan.
+              </p>
+            </section>
+            <ConfigurationEditor
+              value={draft.configuration}
+              onChange={(configuration) =>
+                setDraft({ ...draft, configuration })
+              }
+            />
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">
+                  Template konfigurasi
+                </CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Menerapkan template akan menyalin konfigurasi ke menu ini.
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="menu-template">Pilih template</Label>
+                    <Select
+                      value={selectedTemplateId}
+                      onValueChange={(value) => {
+                        setSelectedTemplateId(value);
+                        setShowTemplatePreview(false);
+                      }}
+                    >
+                      <SelectTrigger id="menu-template">
+                        <SelectValue placeholder="Pilih template" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {templates.map((template) => (
+                          <SelectItem key={template.id} value={template.id}>
+                            {template.name}
+                            {template.source ? " · bawaan" : ""}
                           </SelectItem>
-                          <SelectItem value="REPLACE_BY_TYPE">
-                            Ganti berdasarkan jenis
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      disabled={!selectedTemplateId}
-                      onClick={() =>
-                        setShowTemplatePreview(!showTemplatePreview)
+                  <div className="space-y-2">
+                    <Label htmlFor="template-mode">Mode</Label>
+                    <Select
+                      value={applyMode}
+                      onValueChange={(value) =>
+                        setApplyMode(value as typeof applyMode)
                       }
                     >
-                      {showTemplatePreview
-                        ? "Tutup pratinjau"
-                        : "Lihat pratinjau"}
-                    </Button>
+                      <SelectTrigger id="template-mode">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="REPLACE_ALL">
+                          Ganti seluruh konfigurasi
+                        </SelectItem>
+                        <SelectItem value="REPLACE_BY_TYPE">
+                          Ganti berdasarkan jenis
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={!selectedTemplateId}
+                    onClick={() => setShowTemplatePreview(!showTemplatePreview)}
+                  >
+                    {showTemplatePreview
+                      ? "Tutup pratinjau"
+                      : "Lihat pratinjau"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={!draft.id || busy || hasUnsavedDraftChanges}
+                    onClick={() => void saveDraftAsTemplate()}
+                  >
+                    Simpan sebagai template
+                  </Button>
+                  {draft.id && (
                     <Button
                       type="button"
-                      variant="outline"
-                      disabled={!draft.id || busy}
-                      onClick={() => void saveDraftAsTemplate()}
+                      disabled={
+                        !selectedTemplateId || busy || hasUnsavedDraftChanges
+                      }
+                      onClick={() => void applyTemplateToDraft()}
                     >
-                      Simpan sebagai template
+                      Terapkan template
                     </Button>
-                    {draft.id && (
-                      <Button
-                        type="button"
-                        disabled={!selectedTemplateId || busy}
-                        onClick={() => void applyTemplateToDraft()}
-                      >
-                        Terapkan template
-                      </Button>
-                    )}
-                  </div>
-                  {showTemplatePreview && selectedTemplateId && (
-                    <div className="rounded-md bg-secondary p-3 text-sm">
-                      <p className="font-medium">
-                        {
-                          templates.find(
-                            (template) => template.id === selectedTemplateId,
-                          )?.name
-                        }
-                      </p>
-                      <p className="mt-1 text-muted-foreground">
-                        {templates.find(
-                          (template) => template.id === selectedTemplateId,
-                        )?.configuration.variants.length ?? 0}{" "}
-                        grup varian dan{" "}
-                        {templates.find(
-                          (template) => template.id === selectedTemplateId,
-                        )?.configuration.addons.length ?? 0}{" "}
-                        grup add-on.
-                      </p>
-                    </div>
                   )}
-                </CardContent>
-              </Card>
-              <ConfigurationEditor
-                value={draft.configuration}
-                onChange={(configuration) =>
-                  setDraft({ ...draft, configuration })
-                }
-              />
-              {draft.configuration.variants.filter((group) =>
-                group.options.some(
-                  (option) => option.pricingMode === "OVERRIDE",
-                ),
-              ).length > 1 && (
-                <p role="alert" className="text-sm text-destructive">
-                  Hanya satu grup varian boleh menggunakan harga override.
-                </p>
-              )}
-              <DialogFooter>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setDraft(null)}
-                >
-                  Batal
-                </Button>
-                <Button type="submit" loading={busy}>
-                  Simpan menu
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        )}
-      </Dialog>
+                </div>
+                {hasUnsavedDraftChanges && (
+                  <p className="text-sm text-muted-foreground">
+                    Simpan menu terlebih dahulu agar template memakai
+                    konfigurasi terkini.
+                  </p>
+                )}
+                {showTemplatePreview && selectedTemplateId && (
+                  <div className="rounded-md bg-secondary p-3 text-sm">
+                    <p className="font-medium">
+                      {
+                        templates.find(
+                          (template) => template.id === selectedTemplateId,
+                        )?.name
+                      }
+                    </p>
+                    <p className="mt-1 text-muted-foreground">
+                      {templates.find(
+                        (template) => template.id === selectedTemplateId,
+                      )?.configuration.variants.length ?? 0}{" "}
+                      grup varian dan{" "}
+                      {templates.find(
+                        (template) => template.id === selectedTemplateId,
+                      )?.configuration.addons.length ?? 0}{" "}
+                      grup add-on.
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+            {draft.configuration.variants.filter((group) =>
+              group.options.some((option) => option.pricingMode === "OVERRIDE"),
+            ).length > 1 && (
+              <p role="alert" className="text-sm text-destructive">
+                Hanya satu grup varian boleh menggunakan harga override.
+              </p>
+            )}
+            <div className="sticky bottom-0 flex flex-col-reverse gap-2 border-t bg-background p-3 sm:flex-row sm:justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={requestCloseDraft}
+              >
+                Kembali ke katalog
+              </Button>
+              <Button type="submit" loading={busy}>
+                Simpan menu
+              </Button>
+            </div>
+          </form>
+        </section>
+      )}
 
       <Dialog
         open={saveTemplateDialogOpen}
@@ -1008,6 +1253,32 @@ export function CatalogManager() {
       </Dialog>
 
       <AlertDialog
+        open={confirmDraftDiscard}
+        onOpenChange={setConfirmDraftDiscard}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Buang perubahan menu?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Perubahan yang belum disimpan akan hilang.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Kembali mengedit</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                setConfirmDraftDiscard(false);
+                setDraft(null);
+              }}
+            >
+              Buang perubahan
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
         open={applyTemplateConfirmation}
         onOpenChange={setApplyTemplateConfirmation}
       >
@@ -1015,8 +1286,15 @@ export function CatalogManager() {
           <AlertDialogHeader>
             <AlertDialogTitle>Ganti konfigurasi menu?</AlertDialogTitle>
             <AlertDialogDescription>
-              Konfigurasi menu {draft?.name} akan diganti sesuai mode yang
-              dipilih.
+              Template{" "}
+              {
+                templates.find((template) => template.id === selectedTemplateId)
+                  ?.name
+              }{" "}
+              akan disalin ke menu {draft?.name}.{" "}
+              {applyMode === "REPLACE_ALL"
+                ? "Mode ini mengganti semua grup varian dan add-on yang ada."
+                : "Mode ini mengganti jenis konfigurasi yang tersedia pada template dan mempertahankan jenis lainnya."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

@@ -104,7 +104,9 @@ export function TicketDetail({ ticketId }: { ticketId: string }) {
     return (
       <Card>
         <CardContent className="p-5 text-sm text-muted-foreground">
-          Memuat detail tiket…
+          <div role="status" aria-live="polite">
+            Memuat detail tiket…
+          </div>
         </CardContent>
       </Card>
     );
@@ -112,16 +114,23 @@ export function TicketDetail({ ticketId }: { ticketId: string }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>
+        <CardTitle className="break-words text-xl tabular-nums sm:text-2xl">
           {snapshot.orderNumber} · Meja {snapshot.tableNumber}
         </CardTitle>
-        <p className="text-sm text-muted-foreground">
-          Dibayar{" "}
-          {new Date(ticket.paid_at).toLocaleString("id-ID", {
-            timeZone: "Asia/Jakarta",
-          })}{" "}
-          WIB{snapshot.customerName ? ` · ${snapshot.customerName}` : ""}
-        </p>
+        <div className="space-y-1 text-sm text-muted-foreground">
+          <p>
+            Dibayar{" "}
+            {new Date(ticket.paid_at).toLocaleString("id-ID", {
+              timeZone: "Asia/Jakarta",
+            })}{" "}
+            WIB
+          </p>
+          {snapshot.customerName && (
+            <p className="break-words text-foreground">
+              {snapshot.customerName}
+            </p>
+          )}
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         {ticket.archived_at && ticket.order && (
@@ -130,7 +139,7 @@ export function TicketDetail({ ticketId }: { ticketId: string }) {
             <p>Metode pembayaran: {ticket.payment?.method ?? "QRIS"}</p>
           </div>
         )}
-        <div className="space-y-3">
+        <section aria-label="Rincian item" className="space-y-4">
           {(ticket.items ?? snapshot.items).map((item, index) => {
             const name =
               "menu_name_snapshot" in item
@@ -147,47 +156,50 @@ export function TicketDetail({ ticketId }: { ticketId: string }) {
             );
             return (
               <div
-                className="flex justify-between gap-3 border-b pb-3 text-sm"
+                className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-3 border-b pb-4 text-sm last:border-b-0"
                 key={`${name}-${index}`}
               >
-                <div>
-                  <p>
-                    {item.quantity} × {name}
+                <div className="min-w-0">
+                  <p className="break-words text-base font-semibold">
+                    <span className="mr-2 inline-block min-w-8 tabular-nums">
+                      {item.quantity}×
+                    </span>
+                    {name}
                   </p>
-                  {variants.map((choice, choiceIndex) => (
-                    <p
-                      className="text-xs text-muted-foreground"
-                      key={`v-${choiceIndex}`}
-                    >
-                      {choice}
-                    </p>
-                  ))}
-                  {addons.map((choice, choiceIndex) => (
-                    <p
-                      className="text-xs text-muted-foreground"
-                      key={`a-${choiceIndex}`}
-                    >
-                      {choice}
-                    </p>
-                  ))}
+                  {(variants.length > 0 || addons.length > 0) && (
+                    <ul className="mt-1 space-y-1 pl-10 text-sm text-muted-foreground">
+                      {variants.map((choice, choiceIndex) => (
+                        <li className="break-words" key={`v-${choiceIndex}`}>
+                          {choice}
+                        </li>
+                      ))}
+                      {addons.map((choice, choiceIndex) => (
+                        <li className="break-words" key={`a-${choiceIndex}`}>
+                          {choice}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                   {note && (
-                    <p className="text-xs text-muted-foreground">
-                      Catatan: {note}
+                    <p className="ml-10 mt-2 break-words rounded-md bg-muted px-3 py-2 text-sm">
+                      <span className="font-medium">Catatan:</span> {note}
                     </p>
                   )}
                   {ticket.archived_at && "unit_price_snapshot" in item && (
-                    <p className="text-xs text-muted-foreground">
+                    <p className="mt-1 text-xs text-muted-foreground">
                       {money(item.unit_price_snapshot)} per item
                     </p>
                   )}
                 </div>
                 {ticket.archived_at && "line_total" in item && (
-                  <span>{money(item.line_total)}</span>
+                  <span className="whitespace-nowrap font-medium tabular-nums">
+                    {money(item.line_total)}
+                  </span>
                 )}
               </div>
             );
           })}
-        </div>
+        </section>
         {ticket.archived_at && ticket.order && (
           <div className="space-y-2 border-t pt-3 text-sm">
             <div className="flex justify-between">

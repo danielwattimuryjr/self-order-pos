@@ -16,7 +16,7 @@ export default async function AdminDashboardPage() {
   return (
     <main className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">Dashboard Admin</h1>
+        <h1 className="text-page-title font-semibold">Dashboard Admin</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Ringkasan penjualan berdasarkan tanggal operasional Asia/Jakarta.
         </p>

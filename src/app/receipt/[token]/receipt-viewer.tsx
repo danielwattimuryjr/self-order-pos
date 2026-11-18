@@ -56,6 +56,7 @@ export function ReceiptViewer({ token }: { token: string }) {
   const [emailBusy, setEmailBusy] = useState(false);
   const [emailMessage, setEmailMessage] = useState("");
   const [copied, setCopied] = useState(false);
+  const [copyMessage, setCopyMessage] = useState("");
 
   const loadReceipt = useCallback(async () => {
     const response = await fetch(
@@ -122,9 +123,18 @@ export function ReceiptViewer({ token }: { token: string }) {
   }
 
   async function copyLink() {
-    await navigator.clipboard.writeText(window.location.href);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    setCopyMessage("");
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setCopied(true);
+      setCopyMessage("Tautan struk disalin.");
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
+      setCopyMessage(
+        "Tautan belum dapat disalin. Salin alamat halaman ini dari bilah alamat.",
+      );
+    }
   }
 
   if (error)
@@ -165,7 +175,7 @@ export function ReceiptViewer({ token }: { token: string }) {
     <div className="space-y-4">
       <Card>
         <CardHeader>
-          <p className="text-sm font-medium text-success">
+          <p className="w-fit rounded-full bg-success-soft px-3 py-1 text-sm font-medium text-success">
             Pembayaran berhasil
           </p>
           <CardTitle>Struk Pesanan</CardTitle>
@@ -287,6 +297,11 @@ export function ReceiptViewer({ token }: { token: string }) {
           </Button>
         )}
       </div>
+      {copyMessage && (
+        <p role="status" className="text-sm text-muted-foreground">
+          {copyMessage}
+        </p>
+      )}
     </div>
   );
 }

@@ -14,7 +14,12 @@ export default async function AdminSettingsPage() {
     : null;
   return (
     <main>
-      <h1 className="text-2xl font-semibold">Pengaturan Restoran</h1>
+      <header className="space-y-1">
+        <h1 className="text-page-title font-semibold">Pengaturan Restoran</h1>
+        <p className="text-sm text-muted-foreground">
+          Atur jadwal harian dan status buka sementara restoran.
+        </p>
+      </header>
       <OperatingHoursForm initialSettings={initialSettings} />
     </main>
   );

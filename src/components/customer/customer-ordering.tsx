@@ -16,12 +16,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -98,6 +99,12 @@ type PaymentView = {
   expiresAt: string;
   paidAt: string | null;
 };
+type CustomerPanelStep = "cart" | "checkout" | "payment";
+type SubmittedOrderSummary = {
+  tableNumber: number;
+  lines: CartLine[];
+  orderNotes: string;
+};
 const money = (amount: number) =>
   new Intl.NumberFormat("id-ID", {
     style: "currency",
@@ -158,6 +165,7 @@ export function CustomerOrdering({
   const [itemNote, setItemNote] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [showCart, setShowCart] = useState(false);
+  const [panelStep, setPanelStep] = useState<CustomerPanelStep>("cart");
   const [loading, setLoading] = useState(true);
   const [loadingResults, setLoadingResults] = useState(false);
   const [catalogQueryError, setCatalogQueryError] = useState("");
@@ -178,6 +186,8 @@ export function CustomerOrdering({
   const [receiptEmail, setReceiptEmail] = useState("");
   const [submittingOrder, setSubmittingOrder] = useState(false);
   const [createdOrder, setCreatedOrder] = useState<CreatedOrder | null>(null);
+  const [submittedOrderSummary, setSubmittedOrderSummary] =
+    useState<SubmittedOrderSummary | null>(null);
   const [paymentView, setPaymentView] = useState<PaymentView | null>(null);
   const [paymentError, setPaymentError] = useState("");
   const [paymentBusy, setPaymentBusy] = useState(false);
@@ -261,6 +271,13 @@ export function CustomerOrdering({
         if (savedOrder) {
           const order = JSON.parse(savedOrder) as CreatedOrder;
           setCreatedOrder(order);
+          const savedSummary = sessionStorage.getItem(
+            `qr-order-summary:${order.id}`,
+          );
+          if (savedSummary)
+            setSubmittedOrderSummary(
+              JSON.parse(savedSummary) as SubmittedOrderSummary,
+            );
           setPaymentNow(Date.now());
           const savedPayment = sessionStorage.getItem(
             `qr-payment-view:${order.id}`,
@@ -734,6 +751,16 @@ export function CustomerOrdering({
   const currentVoucher =
     voucherPreview?.cartFingerprint === cartFingerprint ? voucherPreview : null;
   const orderTotal = cartTotal - (currentVoucher?.discountAmount ?? 0);
+  const selectedMenuPricing = selectedMenu
+    ? priceForMenuChoice(selectedMenu.price, selectedMenu.configuration, {
+        variantSelections,
+        addonSelections,
+      })
+    : null;
+  const receiptEmailInvalid = Boolean(
+    receiptEmail.trim() &&
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(receiptEmail.trim()),
+  );
   const isOpen = catalog?.operatingStatus.status === "OPEN";
   const matchingMenuCount = catalog?.pagination.totalItems ?? 0;
   const visibleCategories =
@@ -794,16 +821,17 @@ export function CustomerOrdering({
   async function createOrder() {
     if (!catalog || !cart.lines.length || !isOpen || submittingOrder) return;
     if (cart.lines.some((line) => line.unavailable || line.needsAcceptance)) {
-      toast.error(
+      setError(
         "Periksa menu yang tidak tersedia atau setujui perubahan harga sebelum checkout.",
       );
       return;
     }
     if (voucherCode.trim() && !currentVoucher) {
-      toast.error("Periksa kembali voucher setelah perubahan keranjang.");
+      setError("Periksa kembali voucher setelah perubahan keranjang.");
       return;
     }
     setSubmittingOrder(true);
+    setError("");
     try {
       const pendingKey = `qr-order-pending:${catalog.session.id}:${cartFingerprint}`;
       let pending: { idempotencyKey: string; accessToken: string } | null =
@@ -856,14 +884,30 @@ export function CustomerOrdering({
         },
       );
       const result = await response.json();
-      if (!response.ok)
+      if (!response.ok) {
+        if (result.error?.code === "SESSION_EXPIRED") setSessionExpired(true);
         throw new Error(result.message ?? "Pesanan belum dapat dibuat.");
+      }
       const order = result.data as CreatedOrder;
+      const summary: SubmittedOrderSummary = {
+        tableNumber: catalog.table.tableNumber,
+        lines: cart.lines.map((line) => ({ ...line })),
+        orderNotes: cart.orderNote,
+      };
       setCreatedOrder(order);
+      setSubmittedOrderSummary(summary);
+      setPaymentView(null);
+      setPaymentError("");
+      setPanelStep("payment");
+      setShowCart(true);
       setPaymentNow(Date.now());
       sessionStorage.setItem(
         `qr-order-created:${catalog.session.id}`,
         JSON.stringify(order),
+      );
+      sessionStorage.setItem(
+        `qr-order-summary:${order.id}`,
+        JSON.stringify(summary),
       );
       sessionStorage.removeItem(pendingKey);
       setCart({ ...emptyCart });
@@ -872,11 +916,12 @@ export function CustomerOrdering({
       localStorage.removeItem(storageKey);
       toast.success("Pesanan dibuat dan menunggu pembayaran.");
     } catch (orderError) {
-      toast.error(
+      const message =
         orderError instanceof Error
           ? orderError.message
-          : "Pesanan belum dapat dibuat.",
-      );
+          : "Pesanan belum dapat dibuat.";
+      setError(message);
+      toast.error(message);
     } finally {
       setSubmittingOrder(false);
     }
@@ -952,6 +997,7 @@ export function CustomerOrdering({
       };
     });
     setSelectedMenu(null);
+    setPanelStep("cart");
     setShowCart(true);
     setNotice("");
     toast.success(`${currentMenu.name} ditambahkan ke keranjang.`);
@@ -1069,7 +1115,7 @@ export function CustomerOrdering({
     return (
       <main className="grid min-h-svh place-items-center p-6">
         <div className="max-w-sm text-center">
-          <h1 className="text-xl font-semibold">Sesi meja berakhir</h1>
+          <h1 className="text-2xl font-semibold">Sesi meja berakhir</h1>
           <p className="mt-2 text-sm text-muted-foreground">
             Pindai ulang QR meja untuk memulai sesi baru. Keranjang pada sesi
             sebelumnya tidak dipindahkan.
@@ -1093,7 +1139,7 @@ export function CustomerOrdering({
     return (
       <main className="grid min-h-svh place-items-center p-6">
         <div className="max-w-sm text-center">
-          <h1 className="text-xl font-semibold">Katalog belum dapat dimuat</h1>
+          <h1 className="text-2xl font-semibold">Katalog belum dapat dimuat</h1>
           <p role="alert" className="mt-2 text-sm text-muted-foreground">
             {error}
           </p>
@@ -1121,7 +1167,7 @@ export function CustomerOrdering({
           <p className="text-xs uppercase tracking-wide text-muted-foreground">
             QR Restaurant
           </p>
-          <h1 className="mt-1 text-xl font-semibold">
+          <h1 className="mt-1 text-2xl font-semibold">
             Menu · Meja {String(catalog.table.tableNumber).padStart(2, "0")}
           </h1>
           <p className="mt-1 text-xs text-muted-foreground">
@@ -1143,6 +1189,38 @@ export function CustomerOrdering({
                 : "Jam operasional belum diatur. Pemesanan belum tersedia."}{" "}
             Katalog tetap dapat dilihat.
           </div>
+        </div>
+      )}
+      {createdOrder && (
+        <div className="mx-auto max-w-5xl px-4 pt-3">
+          <Card>
+            <CardContent className="flex flex-wrap items-center justify-between gap-3 p-3">
+              <div>
+                <p className="font-medium">
+                  Pesanan {createdOrder.orderNumber}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {paymentView?.paymentStatus === "PAID"
+                    ? "Pembayaran terkonfirmasi"
+                    : paymentView?.paymentStatus === "CANCELLED"
+                      ? "Pesanan dibatalkan"
+                      : paymentView?.paymentStatus === "EXPIRED"
+                        ? "Batas pembayaran berakhir"
+                        : "Status pembayaran diperbarui otomatis"}
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setPanelStep("payment");
+                  setShowCart(true);
+                }}
+              >
+                Lihat pesanan
+              </Button>
+            </CardContent>
+          </Card>
         </div>
       )}
       {notice && (
@@ -1285,7 +1363,9 @@ export function CustomerOrdering({
               key={category.id}
               className="mb-8 scroll-mt-20"
             >
-              <h2 className="mb-3 text-lg font-semibold">{category.name}</h2>
+              <h2 className="mb-3 text-section-title font-semibold">
+                {category.name}
+              </h2>
               <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
                 {category.menus.map((menu) => (
                   <Button
@@ -1386,248 +1466,733 @@ export function CustomerOrdering({
       </div>
 
       <Button
-        onClick={() => setShowCart(true)}
-        className="fixed inset-x-4 bottom-4 z-20 mx-auto flex h-auto max-w-lg items-center justify-between px-5 py-4 text-left shadow-lg"
+        onClick={() => {
+          setPanelStep(cartCount ? "cart" : createdOrder ? "payment" : "cart");
+          setShowCart(true);
+        }}
+        className="fixed inset-x-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-20 mx-auto flex h-auto max-w-lg items-center justify-between px-5 py-4 text-left shadow-lg"
       >
         <span>
-          <strong>Keranjang</strong>
+          <strong>{cartCount ? "Keranjang" : "Pesanan"}</strong>
           <span className="ml-2 text-sm text-primary-foreground/80">
-            {cartCount} item
+            {cartCount
+              ? `${cartCount} item`
+              : (createdOrder?.orderNumber ?? "Pilih menu")}
           </span>
         </span>
-        <strong>{money(cartTotal)}</strong>
+        <strong>
+          {cartCount ? money(cartTotal) : createdOrder ? "Lihat" : "Buka"}
+        </strong>
       </Button>
 
-      <Dialog
+      <Sheet
         open={selectedMenu !== null}
         onOpenChange={(open) => {
           if (!open) setSelectedMenu(null);
         }}
       >
         {selectedMenu && (
-          <DialogContent className="max-h-[92vh] max-w-xl overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>{selectedMenu.name}</DialogTitle>
-              <DialogDescription>
+          <SheetContent
+            side="bottom"
+            className="max-h-[92dvh] gap-0 overflow-y-auto p-0 md:inset-x-auto md:bottom-auto md:left-1/2 md:right-auto md:top-1/2 md:max-h-[88dvh] md:w-[min(36rem,calc(100vw-2rem))] md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-overlay md:border"
+          >
+            <SheetHeader className="shrink-0 border-b px-5 py-4 pr-14 text-left">
+              <SheetTitle>{selectedMenu.name}</SheetTitle>
+              <SheetDescription>
                 {selectedMenu.description ||
                   `Harga dasar ${money(selectedMenu.price)}`}
-              </DialogDescription>
-            </DialogHeader>
-            {selectedMenu.imageUrl && (
-              <Image
-                src={selectedMenu.imageUrl}
-                alt=""
-                width={600}
-                height={600}
-                unoptimized
-                className="aspect-square max-h-64 w-full rounded-lg object-cover"
-              />
-            )}
-            <p className="font-semibold">
-              Harga dasar {money(selectedMenu.price)}
-            </p>
-            {selectedMenu.configuration.variants.map((group, groupIndex) => (
-              <fieldset key={group.id ?? groupIndex} className="space-y-3">
-                <legend className="font-medium">
-                  {group.name}
-                  {group.required ? (
-                    <span className="ml-1 text-destructive">*</span>
-                  ) : (
-                    <span className="ml-1 text-xs text-muted-foreground">
-                      (opsional)
-                    </span>
-                  )}
-                </legend>
-                <RadioGroup
-                  value={group.id ? (variantSelections[group.id] ?? "") : ""}
-                  onValueChange={(optionId) => {
-                    if (group.id)
-                      setVariantSelections((current) => ({
-                        ...current,
-                        [group.id as string]: optionId,
-                      }));
-                  }}
-                  className="space-y-2"
-                >
-                  {group.options.map((option, optionIndex) => {
-                    const id = `variant-${group.id ?? groupIndex}-${option.id ?? optionIndex}`;
-                    return (
-                      <div
-                        key={option.id ?? optionIndex}
-                        className="flex items-center gap-3 rounded-lg border p-3 text-sm"
-                      >
-                        <RadioGroupItem
-                          id={id}
-                          value={option.id ?? ""}
-                          disabled={!option.id || !option.isActive}
-                        />
-                        <Label
-                          htmlFor={id}
-                          className="flex flex-1 cursor-pointer items-center justify-between gap-2 font-normal"
-                        >
-                          <span>{option.name}</span>
-                          <span>
-                            {option.pricingMode === "OVERRIDE"
-                              ? `Harga ${money(option.priceValue)}`
-                              : option.priceValue
-                                ? `+${money(option.priceValue)}`
-                                : "Tanpa biaya"}
-                          </span>
-                        </Label>
-                      </div>
-                    );
-                  })}
-                </RadioGroup>
-              </fieldset>
-            ))}
-            {selectedMenu.configuration.addons.map((group, groupIndex) => {
-              const selection = group.id
-                ? (addonSelections[group.id] ?? {})
-                : {};
-              return (
+              </SheetDescription>
+            </SheetHeader>
+            <div className="space-y-5 px-5 py-4">
+              {selectedMenu.imageUrl && (
+                <Image
+                  src={selectedMenu.imageUrl}
+                  alt=""
+                  width={600}
+                  height={600}
+                  unoptimized
+                  className="aspect-square max-h-64 w-full rounded-lg object-cover"
+                />
+              )}
+              <p className="font-semibold">
+                Harga dasar {money(selectedMenu.price)}
+              </p>
+              {selectedMenu.configuration.variants.map((group, groupIndex) => (
                 <fieldset key={group.id ?? groupIndex} className="space-y-3">
                   <legend className="font-medium">
-                    {group.name}{" "}
-                    <span className="text-xs text-muted-foreground">
-                      (pilih {group.minSelect}–{group.maxSelect})
-                    </span>
+                    {group.name}
+                    {group.required ? (
+                      <span className="ml-1 text-destructive">*</span>
+                    ) : (
+                      <span className="ml-1 text-xs text-muted-foreground">
+                        (opsional)
+                      </span>
+                    )}
                   </legend>
-                  <div className="space-y-2">
+                  <RadioGroup
+                    value={group.id ? (variantSelections[group.id] ?? "") : ""}
+                    onValueChange={(optionId) => {
+                      if (group.id)
+                        setVariantSelections((current) => ({
+                          ...current,
+                          [group.id as string]: optionId,
+                        }));
+                    }}
+                    className="space-y-2"
+                  >
                     {group.options.map((option, optionIndex) => {
-                      const count = option.id ? (selection[option.id] ?? 0) : 0;
-                      const selectedCount = Object.values(selection).filter(
-                        (value) => value > 0,
-                      ).length;
+                      const id = `variant-${group.id ?? groupIndex}-${option.id ?? optionIndex}`;
                       return (
                         <div
                           key={option.id ?? optionIndex}
                           className="flex items-center gap-3 rounded-lg border p-3 text-sm"
                         >
-                          <span className="flex-1">
-                            {option.name}
-                            <span className="ml-2 text-muted-foreground">
-                              +{money(option.unitPrice)} / tambahan
+                          <RadioGroupItem
+                            id={id}
+                            value={option.id ?? ""}
+                            disabled={!option.id || !option.isActive}
+                          />
+                          <Label
+                            htmlFor={id}
+                            className="flex flex-1 cursor-pointer items-center justify-between gap-2 font-normal"
+                          >
+                            <span>{option.name}</span>
+                            <span>
+                              {option.pricingMode === "OVERRIDE"
+                                ? `Harga ${money(option.priceValue)}`
+                                : option.priceValue
+                                  ? `+${money(option.priceValue)}`
+                                  : "Tanpa biaya"}
                             </span>
-                          </span>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="icon"
-                            aria-label={`Kurangi ${option.name}`}
-                            disabled={!count}
-                            onClick={() => {
-                              if (!group.id || !option.id) return;
-                              const next = { ...selection };
-                              if (count <= 1) delete next[option.id];
-                              else next[option.id] = count - 1;
-                              setAddonSelections({
-                                ...addonSelections,
-                                [group.id]: next,
-                              });
-                            }}
-                          >
-                            −
-                          </Button>
-                          <span className="w-5 text-center">{count}</span>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="icon"
-                            aria-label={`Tambah ${option.name}`}
-                            disabled={
-                              !group.id ||
-                              !option.id ||
-                              (count === 0 &&
-                                selectedCount >= group.maxSelect) ||
-                              count >= 99
-                            }
-                            onClick={() => {
-                              if (!group.id || !option.id) return;
-                              setAddonSelections({
-                                ...addonSelections,
-                                [group.id]: {
-                                  ...selection,
-                                  [option.id]: count + 1,
-                                },
-                              });
-                            }}
-                          >
-                            +
-                          </Button>
+                          </Label>
                         </div>
                       );
                     })}
-                  </div>
+                  </RadioGroup>
                 </fieldset>
-              );
-            })}
-            <div className="space-y-2">
-              <Label htmlFor="item-note">Catatan item (opsional)</Label>
-              <Textarea
-                id="item-note"
-                maxLength={500}
-                value={itemNote}
-                onChange={(event) => setItemNote(event.target.value)}
-                rows={2}
-              />
+              ))}
+              {selectedMenu.configuration.addons.map((group, groupIndex) => {
+                const selection = group.id
+                  ? (addonSelections[group.id] ?? {})
+                  : {};
+                return (
+                  <fieldset key={group.id ?? groupIndex} className="space-y-3">
+                    <legend className="font-medium">
+                      {group.name}{" "}
+                      <span className="text-xs text-muted-foreground">
+                        (pilih {group.minSelect}–{group.maxSelect})
+                      </span>
+                    </legend>
+                    <div className="space-y-2">
+                      {group.options.map((option, optionIndex) => {
+                        const count = option.id
+                          ? (selection[option.id] ?? 0)
+                          : 0;
+                        const selectedCount = Object.values(selection).filter(
+                          (value) => value > 0,
+                        ).length;
+                        return (
+                          <div
+                            key={option.id ?? optionIndex}
+                            className="flex items-center gap-3 rounded-lg border p-3 text-sm"
+                          >
+                            <span className="flex-1">
+                              {option.name}
+                              <span className="ml-2 text-muted-foreground">
+                                +{money(option.unitPrice)} / tambahan
+                              </span>
+                            </span>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              aria-label={`Kurangi ${option.name}`}
+                              disabled={!count}
+                              onClick={() => {
+                                if (!group.id || !option.id) return;
+                                const next = { ...selection };
+                                if (count <= 1) delete next[option.id];
+                                else next[option.id] = count - 1;
+                                setAddonSelections({
+                                  ...addonSelections,
+                                  [group.id]: next,
+                                });
+                              }}
+                            >
+                              −
+                            </Button>
+                            <span className="w-5 text-center">{count}</span>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              aria-label={`Tambah ${option.name}`}
+                              disabled={
+                                !group.id ||
+                                !option.id ||
+                                (count === 0 &&
+                                  selectedCount >= group.maxSelect) ||
+                                count >= 99
+                              }
+                              onClick={() => {
+                                if (!group.id || !option.id) return;
+                                setAddonSelections({
+                                  ...addonSelections,
+                                  [group.id]: {
+                                    ...selection,
+                                    [option.id]: count + 1,
+                                  },
+                                });
+                              }}
+                            >
+                              +
+                            </Button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </fieldset>
+                );
+              })}
+              <div className="space-y-2">
+                <Label htmlFor="item-note">Catatan item (opsional)</Label>
+                <Textarea
+                  id="item-note"
+                  maxLength={500}
+                  value={itemNote}
+                  onChange={(event) => setItemNote(event.target.value)}
+                  rows={2}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="item-quantity">Jumlah</Label>
+                <Input
+                  id="item-quantity"
+                  type="number"
+                  min="1"
+                  max="99"
+                  value={quantity}
+                  onChange={(event) =>
+                    setQuantity(
+                      Math.max(1, Math.min(99, Number(event.target.value))),
+                    )
+                  }
+                  className="w-28"
+                />
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="item-quantity">Jumlah</Label>
-              <Input
-                id="item-quantity"
-                type="number"
-                min="1"
-                max="99"
-                value={quantity}
-                onChange={(event) =>
-                  setQuantity(
-                    Math.max(1, Math.min(99, Number(event.target.value))),
-                  )
-                }
-                className="w-28"
-              />
-            </div>
-            <Button disabled={!isOpen} onClick={addToCart} className="w-full">
-              Tambah ke keranjang
-            </Button>
-          </DialogContent>
+            <SheetFooter className="sticky bottom-0 z-10 border-t bg-background px-5 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 md:static">
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <span className="text-muted-foreground">
+                  {selectedMenuPricing?.valid
+                    ? `${money(selectedMenuPricing.unitPrice)} / item`
+                    : "Lengkapi pilihan"}
+                </span>
+                <strong className="tabular-nums">
+                  {selectedMenuPricing?.valid
+                    ? money(selectedMenuPricing.unitPrice * quantity)
+                    : "—"}
+                </strong>
+              </div>
+              {selectedMenuPricing && !selectedMenuPricing.valid && (
+                <p role="status" className="text-xs text-warning">
+                  {selectedMenuPricing.reason}
+                </p>
+              )}
+              <Button
+                disabled={!isOpen || !selectedMenuPricing?.valid}
+                onClick={addToCart}
+                className="w-full"
+              >
+                Tambah ke keranjang
+              </Button>
+            </SheetFooter>
+          </SheetContent>
         )}
-      </Dialog>
+      </Sheet>
 
-      <Dialog open={showCart} onOpenChange={setShowCart}>
-        <DialogContent className="max-h-[92vh] max-w-xl overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Keranjang</DialogTitle>
-            <DialogDescription>
-              {cartCount} item · {money(orderTotal)} termasuk diskon voucher
-              yang masih berlaku
-            </DialogDescription>
-          </DialogHeader>
-          {createdOrder && (
-            <Card className="border-primary/20">
-              <CardContent className="space-y-3 p-4 text-center">
-                <div className="text-left">
-                  <p className="font-semibold">
-                    Pembayaran · {createdOrder.orderNumber}
+      <Sheet
+        open={showCart}
+        onOpenChange={(open) => {
+          setShowCart(open);
+          if (open && !cartCount && createdOrder) setPanelStep("payment");
+        }}
+      >
+        <SheetContent
+          side="bottom"
+          className="max-h-[94dvh] gap-0 overflow-hidden p-0 md:inset-x-auto md:bottom-auto md:left-1/2 md:right-auto md:top-1/2 md:max-h-[88dvh] md:w-[min(44rem,calc(100vw-2rem))] md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-overlay md:border"
+        >
+          <SheetHeader className="shrink-0 border-b px-5 py-4 pr-14 text-left">
+            <SheetTitle>
+              {panelStep === "checkout"
+                ? "Periksa pesanan"
+                : panelStep === "payment"
+                  ? "Pembayaran"
+                  : "Keranjang"}
+            </SheetTitle>
+            <SheetDescription>
+              {panelStep === "checkout"
+                ? "Periksa detail sebelum membuat pesanan."
+                : panelStep === "payment" && createdOrder
+                  ? createdOrder.orderNumber +
+                    " · Meja " +
+                    String(
+                      submittedOrderSummary?.tableNumber ??
+                        catalog.table.tableNumber,
+                    ).padStart(2, "0")
+                  : cartCount +
+                    " item · " +
+                    money(orderTotal) +
+                    " sebelum pembayaran"}
+            </SheetDescription>
+          </SheetHeader>
+
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4">
+            {panelStep === "cart" && (
+              <div className="space-y-4">
+                {!cart.lines.length ? (
+                  <div className="space-y-3 py-8 text-center">
+                    <p className="font-medium">Keranjang masih kosong</p>
+                    <p className="text-sm text-muted-foreground">
+                      Pilih menu dan sesuaikan pesanan Anda.
+                    </p>
+                    <Button
+                      variant="outline"
+                      onClick={() => setShowCart(false)}
+                    >
+                      Kembali ke menu
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="space-y-3">
+                      {cart.lines.map((line) => (
+                        <Card key={line.key}>
+                          <CardContent className="p-3">
+                            <div className="flex justify-between gap-3">
+                              <div className="min-w-0">
+                                <h3 className="font-medium">{line.menuName}</h3>
+                                {line.choiceLabels.map((label) => (
+                                  <p
+                                    key={label}
+                                    className="text-sm text-muted-foreground"
+                                  >
+                                    {label}
+                                  </p>
+                                ))}
+                                {line.note && (
+                                  <p className="mt-1 text-sm text-muted-foreground">
+                                    Catatan: {line.note}
+                                  </p>
+                                )}
+                              </div>
+                              <strong className="whitespace-nowrap text-sm tabular-nums">
+                                {money(line.unitPrice * line.quantity)}
+                              </strong>
+                            </div>
+                            {line.unavailable && (
+                              <p
+                                role="alert"
+                                className="mt-2 text-sm text-destructive"
+                              >
+                                {line.unavailable}
+                              </p>
+                            )}
+                            {line.lineNotice && (
+                              <div
+                                role="status"
+                                className="mt-2 space-y-2 rounded-md bg-warning-soft p-2 text-sm text-warning"
+                              >
+                                <p>{line.lineNotice}</p>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() =>
+                                    setCart((current) => ({
+                                      ...current,
+                                      lines: current.lines.map((item) =>
+                                        item.key === line.key
+                                          ? { ...item, lineNotice: null }
+                                          : item,
+                                      ),
+                                    }))
+                                  }
+                                >
+                                  Mengerti
+                                </Button>
+                              </div>
+                            )}
+                            {line.needsAcceptance && (
+                              <div className="mt-2 space-y-2 rounded-md bg-warning-soft p-2 text-sm text-warning">
+                                <p>
+                                  Harga berubah menjadi {money(line.unitPrice)}{" "}
+                                  per item. Setujui harga baru untuk
+                                  melanjutkan.
+                                </p>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() =>
+                                    setCart((current) => ({
+                                      ...current,
+                                      lines: current.lines.map((item) =>
+                                        item.key === line.key
+                                          ? { ...item, needsAcceptance: false }
+                                          : item,
+                                      ),
+                                    }))
+                                  }
+                                >
+                                  Setujui harga baru
+                                </Button>
+                              </div>
+                            )}
+                            <div className="mt-3 flex items-center gap-2">
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                aria-label={"Kurangi jumlah " + line.menuName}
+                                onClick={() => adjustLine(line, -1)}
+                              >
+                                −
+                              </Button>
+                              <span
+                                className="min-w-6 text-center tabular-nums"
+                                aria-live="polite"
+                              >
+                                {line.quantity}
+                              </span>
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                aria-label={"Tambah jumlah " + line.menuName}
+                                disabled={line.quantity >= 99}
+                                onClick={() => adjustLine(line, 1)}
+                              >
+                                +
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="ml-auto text-destructive"
+                                onClick={() =>
+                                  setCartConfirmation({ kind: "line", line })
+                                }
+                              >
+                                Hapus
+                              </Button>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+
+                    <div className="space-y-3 rounded-lg border p-3">
+                      <div className="space-y-2">
+                        <Label htmlFor="voucher-code">
+                          Kode voucher (opsional)
+                        </Label>
+                        <div className="flex gap-2">
+                          <Input
+                            id="voucher-code"
+                            value={voucherCode}
+                            onChange={(event) => {
+                              setVoucherCode(event.target.value.toUpperCase());
+                              setVoucherPreview(null);
+                            }}
+                            maxLength={40}
+                            autoCapitalize="characters"
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            disabled={validatingVoucher || !voucherCode.trim()}
+                            onClick={() => void applyVoucher()}
+                          >
+                            {validatingVoucher ? "Memeriksa…" : "Terapkan"}
+                          </Button>
+                        </div>
+                      </div>
+                      {currentVoucher && (
+                        <div
+                          role="status"
+                          className="flex items-center justify-between gap-2 text-sm"
+                        >
+                          <span>
+                            {currentVoucher.name}: potongan{" "}
+                            {money(currentVoucher.discountAmount)}
+                          </span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setVoucherCode("");
+                              setVoucherPreview(null);
+                            }}
+                          >
+                            Hapus voucher
+                          </Button>
+                        </div>
+                      )}
+                      {voucherPreview && !currentVoucher && (
+                        <p role="status" className="text-sm text-warning">
+                          Keranjang berubah. Terapkan ulang voucher sebelum
+                          checkout.
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="space-y-2 border-t pt-3 text-sm">
+                      <div className="flex justify-between gap-3">
+                        <span>Subtotal</span>
+                        <span className="tabular-nums">{money(cartTotal)}</span>
+                      </div>
+                      {currentVoucher && (
+                        <div className="flex justify-between gap-3 text-success">
+                          <span>Diskon voucher</span>
+                          <span className="tabular-nums">
+                            −{money(currentVoucher.discountAmount)}
+                          </span>
+                        </div>
+                      )}
+                      <div className="flex justify-between gap-3 pt-1 text-base font-semibold">
+                        <span>Total sementara</span>
+                        <span className="tabular-nums">
+                          {money(orderTotal)}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Total akhir dihitung dan dikonfirmasi oleh server saat
+                        pesanan dibuat.
+                      </p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      className="text-destructive"
+                      onClick={() => setCartConfirmation({ kind: "clear" })}
+                    >
+                      Kosongkan keranjang
+                    </Button>
+                  </>
+                )}
+              </div>
+            )}
+
+            {panelStep === "checkout" && (
+              <div className="space-y-5">
+                {error && (
+                  <p role="alert" className="text-sm text-destructive">
+                    {error}
                   </p>
-                  <p className="text-sm text-muted-foreground">
-                    Total {money(createdOrder.totalAmount)}
-                  </p>
+                )}
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="customer-name">
+                      Nama pelanggan (opsional)
+                    </Label>
+                    <Input
+                      id="customer-name"
+                      maxLength={120}
+                      value={customerName}
+                      onChange={(event) => setCustomerName(event.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="checkout-order-note">
+                      Catatan pesanan (opsional)
+                    </Label>
+                    <Textarea
+                      id="checkout-order-note"
+                      maxLength={1000}
+                      rows={3}
+                      value={cart.orderNote}
+                      onChange={(event) =>
+                        setCart((current) => ({
+                          ...current,
+                          orderNote: event.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="receipt-email">
+                      Email struk (opsional)
+                    </Label>
+                    <Input
+                      id="receipt-email"
+                      type="email"
+                      maxLength={254}
+                      value={receiptEmail}
+                      onChange={(event) => setReceiptEmail(event.target.value)}
+                      aria-invalid={receiptEmailInvalid}
+                      aria-describedby={
+                        receiptEmailInvalid
+                          ? "receipt-email-help receipt-email-error"
+                          : "receipt-email-help"
+                      }
+                    />
+                    <p
+                      id="receipt-email-help"
+                      className="text-sm text-muted-foreground"
+                    >
+                      Struk dikirim setelah pembayaran berhasil dikonfirmasi.
+                    </p>
+                    {receiptEmailInvalid && (
+                      <p
+                        id="receipt-email-error"
+                        className="text-sm text-destructive"
+                      >
+                        Masukkan alamat email dengan format yang benar.
+                      </p>
+                    )}
+                  </div>
                 </div>
+                <section
+                  aria-labelledby="checkout-summary-title"
+                  className="space-y-3 border-t pt-4"
+                >
+                  <h3 id="checkout-summary-title" className="font-semibold">
+                    Ringkasan pesanan
+                  </h3>
+                  <div className="space-y-3">
+                    {cart.lines.map((line) => (
+                      <div
+                        key={line.key}
+                        className="flex justify-between gap-3 text-sm"
+                      >
+                        <div className="min-w-0">
+                          <p>
+                            {line.quantity} × {line.menuName}
+                          </p>
+                          {line.choiceLabels.map((label) => (
+                            <p key={label} className="text-muted-foreground">
+                              {label}
+                            </p>
+                          ))}
+                        </div>
+                        <span className="shrink-0 tabular-nums">
+                          {money(line.unitPrice * line.quantity)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="space-y-2 border-t pt-3 text-sm">
+                    <div className="flex justify-between gap-3">
+                      <span>Subtotal</span>
+                      <span className="tabular-nums">{money(cartTotal)}</span>
+                    </div>
+                    {currentVoucher && (
+                      <div className="flex justify-between gap-3 text-success">
+                        <span>Diskon · {currentVoucher.name}</span>
+                        <span className="tabular-nums">
+                          −{money(currentVoucher.discountAmount)}
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex justify-between gap-3 text-base font-semibold">
+                      <span>Total sementara</span>
+                      <span className="tabular-nums">{money(orderTotal)}</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Server memvalidasi harga, voucher, dan total sebelum
+                      pesanan dibuat.
+                    </p>
+                  </div>
+                </section>
+              </div>
+            )}
+
+            {panelStep === "payment" && createdOrder && (
+              <div className="space-y-5">
+                <section
+                  aria-labelledby="submitted-order-title"
+                  className="space-y-3"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <h3 id="submitted-order-title" className="font-semibold">
+                        Pesanan {createdOrder.orderNumber}
+                      </h3>
+                      <p className="text-sm text-muted-foreground">
+                        Meja{" "}
+                        {String(
+                          submittedOrderSummary?.tableNumber ??
+                            catalog.table.tableNumber,
+                        ).padStart(2, "0")}
+                      </p>
+                    </div>
+                    <span
+                      className={`rounded-full px-3 py-1 text-sm font-medium ${
+                        paymentView?.paymentStatus === "PAID"
+                          ? "bg-success-soft text-success"
+                          : paymentView?.paymentStatus === "CANCELLED" ||
+                              paymentView?.paymentStatus === "EXPIRED"
+                            ? "bg-secondary text-secondary-foreground"
+                            : "bg-warning-soft text-warning"
+                      }`}
+                    >
+                      {paymentView?.paymentStatus === "PAID"
+                        ? "Pembayaran berhasil"
+                        : paymentView?.paymentStatus === "CANCELLED"
+                          ? "Pesanan dibatalkan"
+                          : paymentView?.paymentStatus === "EXPIRED"
+                            ? "Batas pembayaran berakhir"
+                            : "Menunggu pembayaran"}
+                    </span>
+                  </div>
+                  <div className="divide-y rounded-lg border">
+                    {submittedOrderSummary?.lines.map((line, index) => (
+                      <div
+                        key={line.key + "-submitted-" + index}
+                        className="space-y-1 p-3 text-sm"
+                      >
+                        <p>
+                          {line.quantity} × {line.menuName}
+                        </p>
+                        {line.choiceLabels.map((label) => (
+                          <p key={label} className="text-muted-foreground">
+                            {label}
+                          </p>
+                        ))}
+                        {line.note && (
+                          <p className="text-muted-foreground">
+                            Catatan: {line.note}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  {submittedOrderSummary?.orderNotes && (
+                    <p className="text-sm text-muted-foreground">
+                      Catatan pesanan: {submittedOrderSummary.orderNotes}
+                    </p>
+                  )}
+                  <div className="flex justify-between gap-3 border-t pt-3 text-lg font-semibold">
+                    <span>Total pesanan</span>
+                    <span className="tabular-nums">
+                      {money(createdOrder.totalAmount)}
+                    </span>
+                  </div>
+                </section>
+
                 {paymentView?.paymentStatus === "PAID" ? (
                   <div
                     role="status"
                     className="space-y-3 rounded-lg bg-success-soft p-4 text-success"
                   >
                     <div>
-                      <p className="font-semibold">Pembayaran berhasil</p>
+                      <p className="font-semibold">Pembayaran terkonfirmasi</p>
                       <p className="mt-1 text-sm">
                         Pesanan Anda telah dikonfirmasi.
                       </p>
                     </div>
                     <Button asChild>
                       <a
-                        href={`/receipt/${encodeURIComponent(createdOrder.accessToken)}`}
+                        href={
+                          "/receipt/" +
+                          encodeURIComponent(createdOrder.accessToken)
+                        }
                       >
                         Lihat struk
                       </a>
@@ -1636,24 +2201,28 @@ export function CustomerOrdering({
                 ) : paymentView?.paymentStatus === "CANCELLED" ||
                   paymentView?.paymentStatus === "EXPIRED" ? (
                   <div role="status" className="rounded-lg bg-secondary p-4">
-                    <p className="font-semibold">
+                    <p className="font-medium">
                       {paymentView.paymentStatus === "CANCELLED"
-                        ? "Pesanan dibatalkan"
-                        : "Batas pembayaran berakhir"}
+                        ? "Pesanan dibatalkan."
+                        : "Waktu pembayaran telah berakhir."}
                     </p>
                   </div>
                 ) : paymentView?.qrUrl ? (
-                  <>
+                  <section
+                    aria-label="Pembayaran QRIS"
+                    className="space-y-3 rounded-lg bg-muted/50 p-4 text-center"
+                  >
                     <Image
                       src={paymentView.qrUrl}
                       alt="Kode QRIS untuk pembayaran"
                       width={320}
                       height={320}
                       unoptimized
-                      className="mx-auto aspect-square w-64 rounded-lg border bg-white object-contain p-2"
+                      className="mx-auto aspect-square w-64 max-w-full rounded-lg border bg-white object-contain p-2"
                     />
                     <p className="text-sm">
-                      Pindai QRIS melalui aplikasi pembayaran Anda.
+                      Pindai kode QRIS dengan aplikasi pembayaran yang mendukung
+                      pemindaian kode.
                     </p>
                     <Button
                       type="button"
@@ -1664,7 +2233,7 @@ export function CustomerOrdering({
                     >
                       {downloadingQr ? "Mengunduh QR…" : "Unduh QR pembayaran"}
                     </Button>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-sm text-muted-foreground">
                       Batas pembayaran{" "}
                       {new Date(createdOrder.expiresAt).toLocaleTimeString(
                         "id-ID",
@@ -1676,31 +2245,56 @@ export function CustomerOrdering({
                       )}{" "}
                       WIB
                       {paymentView.paymentStatus === "PENDING"
-                        ? ` · ${Math.max(0, Math.ceil((new Date(createdOrder.expiresAt).getTime() - paymentNow) / 1000))} detik tersisa`
+                        ? " · " +
+                          Math.max(
+                            0,
+                            Math.ceil(
+                              (new Date(createdOrder.expiresAt).getTime() -
+                                paymentNow) /
+                                1000,
+                            ),
+                          ) +
+                          " detik tersisa"
                         : ""}
                     </p>
-                  </>
+                  </section>
                 ) : (
-                  <div role="status" className="rounded-lg bg-secondary p-4">
+                  <div
+                    role="status"
+                    className="space-y-3 rounded-lg bg-secondary p-4"
+                  >
                     <p className="font-medium">
                       {paymentBusy
                         ? "Menyiapkan QRIS…"
                         : paymentView?.attemptStatus === "FAILED"
                           ? "Percobaan pembayaran gagal."
-                          : "Menunggu QRIS dari provider…"}
+                          : "Menunggu status QRIS dari provider…"}
                     </p>
-                    <p className="mt-1 text-sm text-muted-foreground">
+                    <p className="text-sm text-muted-foreground">
                       Status pembayaran diperbarui otomatis.
                     </p>
-                    {paymentView?.attemptStatus === "FAILED" && (
-                      <Button
-                        className="mt-3"
-                        variant="outline"
-                        onClick={() => setPaymentRetry((count) => count + 1)}
-                      >
-                        Coba lagi
-                      </Button>
-                    )}
+                    <p className="text-sm text-muted-foreground">
+                      Batas pembayaran pukul{" "}
+                      {new Date(createdOrder.expiresAt).toLocaleTimeString(
+                        "id-ID",
+                        {
+                          timeZone: "Asia/Jakarta",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        },
+                      )}{" "}
+                      WIB.
+                    </p>
+                    {(paymentView?.attemptStatus === "FAILED" ||
+                      paymentError) &&
+                      paymentView?.paymentStatus !== "PAID" && (
+                        <Button
+                          variant="outline"
+                          onClick={() => setPaymentRetry((count) => count + 1)}
+                        >
+                          Coba lagi
+                        </Button>
+                      )}
                   </div>
                 )}
                 {paymentError && (
@@ -1718,264 +2312,76 @@ export function CustomerOrdering({
                     Batalkan pesanan
                   </Button>
                 )}
-              </CardContent>
-            </Card>
-          )}
-          {!cart.lines.length && (
-            <Card>
-              <CardContent className="p-6 text-center text-sm text-muted-foreground">
-                Keranjang masih kosong.
-              </CardContent>
-            </Card>
-          )}
-          <div className="space-y-3">
-            {cart.lines.map((line) => (
-              <Card key={line.key}>
-                <CardContent className="p-3">
-                  <div className="flex justify-between gap-3">
-                    <div>
-                      <h3 className="font-medium">{line.menuName}</h3>
-                      {line.choiceLabels.map((label) => (
-                        <p
-                          key={label}
-                          className="text-xs text-muted-foreground"
-                        >
-                          {label}
-                        </p>
-                      ))}
-                      {line.note && (
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          Catatan: {line.note}
-                        </p>
-                      )}
-                    </div>
-                    <strong className="whitespace-nowrap text-sm">
-                      {money(line.unitPrice * line.quantity)}
-                    </strong>
-                  </div>
-                  {line.unavailable && (
-                    <p role="alert" className="mt-2 text-sm text-destructive">
-                      {line.unavailable}
-                    </p>
-                  )}
-                  {line.lineNotice && (
-                    <div
-                      role="status"
-                      className="mt-2 flex items-center justify-between gap-2 rounded-md bg-warning-soft p-2 text-sm text-warning"
-                    >
-                      <span>{line.lineNotice}</span>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() =>
-                          setCart((current) => ({
-                            ...current,
-                            lines: current.lines.map((item) =>
-                              item.key === line.key
-                                ? { ...item, lineNotice: null }
-                                : item,
-                            ),
-                          }))
-                        }
-                      >
-                        Mengerti
-                      </Button>
-                    </div>
-                  )}
-                  {line.needsAcceptance && (
-                    <div className="mt-2 flex flex-wrap items-center gap-2 rounded-md bg-warning-soft p-2 text-sm text-warning">
-                      <span>
-                        Harga berubah: {money(line.unitPrice)} per item.
-                      </span>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() =>
-                          setCart((current) => ({
-                            ...current,
-                            lines: current.lines.map((item) =>
-                              item.key === line.key
-                                ? { ...item, needsAcceptance: false }
-                                : item,
-                            ),
-                          }))
-                        }
-                      >
-                        Setujui harga baru
-                      </Button>
-                    </div>
-                  )}
-                  <div className="mt-3 flex items-center gap-3">
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      aria-label="Kurangi jumlah"
-                      onClick={() => adjustLine(line, -1)}
-                    >
-                      −
-                    </Button>
-                    <span>{line.quantity}</span>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      aria-label="Tambah jumlah"
-                      disabled={line.quantity >= 99}
-                      onClick={() => adjustLine(line, 1)}
-                    >
-                      +
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      className="ml-auto"
-                      onClick={() =>
-                        setCartConfirmation({ kind: "line", line })
-                      }
-                    >
-                      Hapus
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+              </div>
+            )}
+
+            {panelStep === "payment" && !createdOrder && (
+              <div className="space-y-3 py-8 text-center">
+                <p className="font-medium">Belum ada pesanan untuk dibayar</p>
+                <p className="text-sm text-muted-foreground">
+                  Tambahkan menu ke keranjang untuk melanjutkan.
+                </p>
+              </div>
+            )}
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="order-note">Catatan pesanan (opsional)</Label>
-            <Textarea
-              id="order-note"
-              maxLength={1000}
-              rows={2}
-              value={cart.orderNote}
-              onChange={(event) =>
-                setCart({ ...cart, orderNote: event.target.value })
-              }
-            />
-          </div>
-          {cart.lines.length > 0 && (
-            <>
-              <div className="space-y-2 rounded-lg border p-3">
-                <Label htmlFor="voucher-code">Kode voucher</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="voucher-code"
-                    value={voucherCode}
-                    onChange={(event) => {
-                      setVoucherCode(event.target.value.toUpperCase());
-                      setVoucherPreview(null);
-                    }}
-                    maxLength={40}
-                    autoCapitalize="characters"
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={validatingVoucher || !voucherCode.trim()}
-                    onClick={() => void applyVoucher()}
-                  >
-                    {validatingVoucher ? "Memeriksa…" : "Terapkan"}
-                  </Button>
-                </div>
-                {currentVoucher && (
-                  <div
-                    role="status"
-                    className="flex items-center justify-between gap-2 text-sm"
-                  >
-                    <span>
-                      {currentVoucher.name}: potongan{" "}
-                      {money(currentVoucher.discountAmount)}
-                    </span>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setVoucherCode("");
-                        setVoucherPreview(null);
-                      }}
-                    >
-                      Hapus voucher
-                    </Button>
-                  </div>
-                )}
-                {voucherPreview && !currentVoucher && (
-                  <p className="text-xs text-warning">
-                    Keranjang berubah. Terapkan ulang voucher sebelum membuat
-                    pesanan.
-                  </p>
-                )}
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="customer-name">
-                    Nama pelanggan (opsional)
-                  </Label>
-                  <Input
-                    id="customer-name"
-                    maxLength={120}
-                    value={customerName}
-                    onChange={(event) => setCustomerName(event.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="receipt-email">Email struk (opsional)</Label>
-                  <Input
-                    id="receipt-email"
-                    type="email"
-                    maxLength={254}
-                    value={receiptEmail}
-                    onChange={(event) => setReceiptEmail(event.target.value)}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Digunakan untuk mengirim struk setelah pembayaran.
-                  </p>
-                </div>
-              </div>
-              <div className="space-y-2 border-t pt-3 text-sm">
-                <div className="flex justify-between">
-                  <span>Subtotal</span>
-                  <span>{money(cartTotal)}</span>
-                </div>
-                {currentVoucher && (
-                  <div className="flex justify-between text-success">
-                    <span>Diskon voucher</span>
-                    <span>−{money(currentVoucher.discountAmount)}</span>
-                  </div>
-                )}
-                <div className="flex justify-between pt-1 text-base font-semibold">
-                  <span>Total</span>
-                  <span>{money(orderTotal)}</span>
-                </div>
-              </div>
+
+          <SheetFooter className="shrink-0 border-t bg-background px-5 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3">
+            {panelStep === "cart" && cart.lines.length > 0 && (
               <Button
-                variant="ghost"
-                className="text-destructive"
-                onClick={() => setCartConfirmation({ kind: "clear" })}
-              >
-                Kosongkan keranjang
-              </Button>
-              <Button
-                type="button"
                 className="w-full"
                 disabled={
                   !isOpen ||
-                  submittingOrder ||
                   cart.lines.some(
                     (line) => line.unavailable || line.needsAcceptance,
                   ) ||
                   (Boolean(voucherCode.trim()) && !currentVoucher)
                 }
-                onClick={() => void createOrder()}
+                onClick={() => {
+                  setPanelStep("checkout");
+                  setError("");
+                }}
               >
-                {submittingOrder ? "Membuat pesanan…" : "Buat pesanan"}
+                Lanjut ke checkout · {money(orderTotal)}
               </Button>
-              <p className="text-center text-xs text-muted-foreground">
-                Pesanan akan divalidasi dan dihitung ulang oleh server.
-                Pembayaran QRIS dilanjutkan setelah order dibuat.
-              </p>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
+            )}
+            {panelStep === "checkout" && (
+              <div className="flex flex-col-reverse gap-2 sm:flex-row">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setPanelStep("cart")}
+                >
+                  Kembali ke keranjang
+                </Button>
+                <Button
+                  className="flex-1"
+                  disabled={
+                    !isOpen ||
+                    submittingOrder ||
+                    cart.lines.some(
+                      (line) => line.unavailable || line.needsAcceptance,
+                    ) ||
+                    (Boolean(voucherCode.trim()) && !currentVoucher) ||
+                    receiptEmailInvalid
+                  }
+                  onClick={() => void createOrder()}
+                >
+                  {submittingOrder ? "Membuat pesanan…" : "Buat pesanan"}
+                </Button>
+              </div>
+            )}
+            {panelStep === "payment" && createdOrder && (
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => setShowCart(false)}
+              >
+                Kembali ke menu
+              </Button>
+            )}
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
 
       <AlertDialog
         open={cartConfirmation !== null}

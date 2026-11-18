@@ -350,230 +350,235 @@ export function TemplatesManager() {
 
   return (
     <div aria-busy={busy || undefined} className="mt-6 space-y-6">
-      <Card>
-        <CardHeader className="flex-row items-center justify-between">
-          <CardTitle>Kategori template</CardTitle>
-          <CardDescription>
-            Kategori ini terpisah dari kategori menu.
-          </CardDescription>
-          <CardAction>
-            <Button variant="outline" onClick={() => openCategoryDialog()}>
-              Tambah kategori
-            </Button>
-          </CardAction>
-        </CardHeader>
-        <CardContent className="flex flex-wrap gap-2">
-          {categories.map((category) => (
-            <div
-              key={category.id}
-              className="flex items-center gap-1 rounded-full border px-3 py-1.5 text-sm"
-            >
-              <span>{category.name}</span>
-              <Button
-                size="sm"
-                variant="ghost"
-                aria-label={`Ubah kategori ${category.name}`}
-                onClick={() => openCategoryDialog(category)}
-              >
-                Ubah
+      <div hidden={Boolean(draft)} className="space-y-6">
+        <Card>
+          <CardHeader className="flex-row items-center justify-between">
+            <CardTitle>Kategori template</CardTitle>
+            <CardDescription>
+              Kategori ini terpisah dari kategori menu.
+            </CardDescription>
+            <CardAction>
+              <Button variant="outline" onClick={() => openCategoryDialog()}>
+                Tambah kategori
               </Button>
-              <Button
-                size="sm"
-                variant="destructive"
-                aria-label={`Hapus kategori ${category.name}`}
-                onClick={() => setCategoryToDelete(category)}
+            </CardAction>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-2">
+            {categories.map((category) => (
+              <div
+                key={category.id}
+                className="flex items-center gap-1 rounded-full border px-3 py-1.5 text-sm"
               >
-                Hapus
-              </Button>
-            </div>
-          ))}
-          {!categories.length && (
-            <p className="text-sm text-muted-foreground">
-              Belum ada kategori template.
-            </p>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="flex-row items-center justify-between">
-          <CardTitle>Template tersedia</CardTitle>
-          <CardDescription>
-            Template bawaan tidak dapat diubah. Semua perubahan custom disimpan
-            manual.
-          </CardDescription>
-          <CardAction>
-            <Button onClick={() => beginEdit()}>Buat template</Button>
-          </CardAction>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-3 sm:grid-cols-3">
-            <div className="space-y-2">
-              <Label htmlFor="template-search">Cari</Label>
-              <Input
-                id="template-search"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="template-category-filter">Kategori</Label>
-              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                <SelectTrigger id="template-category-filter">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">Semua kategori</SelectItem>
-                  <SelectItem value="NONE">Tanpa kategori</SelectItem>
-                  {categories.map((category) => (
-                    <SelectItem key={category.id} value={category.id}>
-                      {category.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="template-sort">Urutkan</Label>
-              <Select value={sortBy} onValueChange={setSortBy}>
-                <SelectTrigger id="template-sort">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="name">Nama</SelectItem>
-                  <SelectItem value="updated">Terbaru diubah</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <div className="mt-4 grid gap-3 lg:grid-cols-2">
-            {visibleTemplates.map((template) => (
-              <Card key={template.id}>
-                <CardHeader className="pb-3">
-                  <CardTitle className="flex flex-wrap items-center gap-2 text-base">
-                    {template.name}
-                    {template.source === "BUILT_IN" && (
-                      <Badge variant="secondary">Bawaan · read-only</Badge>
-                    )}
-                  </CardTitle>
-                  <CardDescription>
-                    {template.category_id
-                      ? (categories.find(
-                          (category) => category.id === template.category_id,
-                        )?.name ?? "Tanpa kategori")
-                      : "Tanpa kategori"}{" "}
-                    · {template.configuration.variants.length} grup varian ·{" "}
-                    {template.configuration.addons.length} grup add-on
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <details>
-                    <summary className="cursor-pointer text-sm underline">
-                      Pratinjau konfigurasi
-                    </summary>
-                    <ConfigurationSummary
-                      configuration={template.configuration}
-                    />
-                  </details>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {template.source !== "BUILT_IN" && (
-                      <>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => beginEdit(template)}
-                        >
-                          Edit
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => duplicate(template)}
-                        >
-                          Duplikasi
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={() => setTemplateToDelete(template)}
-                        >
-                          Hapus
-                        </Button>
-                      </>
-                    )}
-                    <Button size="sm" onClick={() => requestApply(template)}>
-                      Terapkan ke menu terpilih
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
+                <span>{category.name}</span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  aria-label={`Ubah kategori ${category.name}`}
+                  onClick={() => openCategoryDialog(category)}
+                >
+                  Ubah
+                </Button>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  aria-label={`Hapus kategori ${category.name}`}
+                  onClick={() => setCategoryToDelete(category)}
+                >
+                  Hapus
+                </Button>
+              </div>
             ))}
-            {!visibleTemplates.length && (
-              <p className="rounded-lg bg-secondary p-5 text-sm text-muted-foreground">
-                Tidak ada template yang cocok.
+            {!categories.length && (
+              <p className="text-sm text-muted-foreground">
+                Belum ada kategori template.
               </p>
             )}
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Terapkan atau simpan konfigurasi menu</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="grid gap-3 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="target-menu">Menu tujuan</Label>
-              <Select value={selectedMenu} onValueChange={setSelectedMenu}>
-                <SelectTrigger id="target-menu">
-                  <SelectValue placeholder="Pilih menu" />
-                </SelectTrigger>
-                <SelectContent>
-                  {menus.map((menu) => (
-                    <SelectItem key={menu.id} value={menu.id}>
-                      {menu.name}
+        <Card>
+          <CardHeader className="flex-row items-center justify-between">
+            <CardTitle>Template tersedia</CardTitle>
+            <CardDescription>
+              Template bawaan tidak dapat diubah. Semua perubahan custom
+              disimpan manual.
+            </CardDescription>
+            <CardAction>
+              <Button onClick={() => beginEdit()}>Buat template</Button>
+            </CardAction>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="space-y-2">
+                <Label htmlFor="template-search">Cari</Label>
+                <Input
+                  id="template-search"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="template-category-filter">Kategori</Label>
+                <Select
+                  value={categoryFilter}
+                  onValueChange={setCategoryFilter}
+                >
+                  <SelectTrigger id="template-category-filter">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">Semua kategori</SelectItem>
+                    <SelectItem value="NONE">Tanpa kategori</SelectItem>
+                    {categories.map((category) => (
+                      <SelectItem key={category.id} value={category.id}>
+                        {category.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="template-sort">Urutkan</Label>
+                <Select value={sortBy} onValueChange={setSortBy}>
+                  <SelectTrigger id="template-sort">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="name">Nama</SelectItem>
+                    <SelectItem value="updated">Terbaru diubah</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="mt-4 grid gap-3 lg:grid-cols-2">
+              {visibleTemplates.map((template) => (
+                <Card key={template.id}>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="flex flex-wrap items-center gap-2 text-base">
+                      {template.name}
+                      {template.source === "BUILT_IN" && (
+                        <Badge variant="secondary">Bawaan · read-only</Badge>
+                      )}
+                    </CardTitle>
+                    <CardDescription>
+                      {template.category_id
+                        ? (categories.find(
+                            (category) => category.id === template.category_id,
+                          )?.name ?? "Tanpa kategori")
+                        : "Tanpa kategori"}{" "}
+                      · {template.configuration.variants.length} grup varian ·{" "}
+                      {template.configuration.addons.length} grup add-on
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <details>
+                      <summary className="cursor-pointer text-sm underline">
+                        Pratinjau konfigurasi
+                      </summary>
+                      <ConfigurationSummary
+                        configuration={template.configuration}
+                      />
+                    </details>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {template.source !== "BUILT_IN" && (
+                        <>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => beginEdit(template)}
+                          >
+                            Edit
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => duplicate(template)}
+                          >
+                            Duplikasi
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => setTemplateToDelete(template)}
+                          >
+                            Hapus
+                          </Button>
+                        </>
+                      )}
+                      <Button size="sm" onClick={() => requestApply(template)}>
+                        Terapkan ke menu terpilih
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+              {!visibleTemplates.length && (
+                <p className="rounded-lg bg-secondary p-5 text-sm text-muted-foreground">
+                  Tidak ada template yang cocok.
+                </p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Terapkan atau simpan konfigurasi menu</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="target-menu">Menu tujuan</Label>
+                <Select value={selectedMenu} onValueChange={setSelectedMenu}>
+                  <SelectTrigger id="target-menu">
+                    <SelectValue placeholder="Pilih menu" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {menus.map((menu) => (
+                      <SelectItem key={menu.id} value={menu.id}>
+                        {menu.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="apply-mode">Mode penerapan</Label>
+                <Select
+                  value={applyMode}
+                  onValueChange={(value) =>
+                    setApplyMode(value as typeof applyMode)
+                  }
+                >
+                  <SelectTrigger id="apply-mode">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="REPLACE_ALL">
+                      Ganti seluruh konfigurasi
                     </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                    <SelectItem value="REPLACE_BY_TYPE">
+                      Ganti hanya jenis yang ada pada template
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="apply-mode">Mode penerapan</Label>
-              <Select
-                value={applyMode}
-                onValueChange={(value) =>
-                  setApplyMode(value as typeof applyMode)
-                }
-              >
-                <SelectTrigger id="apply-mode">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="REPLACE_ALL">
-                    Ganti seluruh konfigurasi
-                  </SelectItem>
-                  <SelectItem value="REPLACE_BY_TYPE">
-                    Ganti hanya jenis yang ada pada template
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <Button
-            variant="outline"
-            disabled={!selectedMenu || busy}
-            aria-busy={busy || undefined}
-            onClick={saveFromMenu}
-          >
-            Simpan menu sebagai template
-          </Button>
-          <p className="text-xs text-muted-foreground">
-            Jika menu sudah berisi konfigurasi, dialog konfirmasi akan muncul
-            sebelum konfigurasi diganti.
-          </p>
-        </CardContent>
-      </Card>
+            <Button
+              variant="outline"
+              disabled={!selectedMenu || busy}
+              aria-busy={busy || undefined}
+              onClick={saveFromMenu}
+            >
+              Simpan menu sebagai template
+            </Button>
+            <p className="text-xs text-muted-foreground">
+              Jika menu sudah berisi konfigurasi, dialog konfirmasi akan muncul
+              sebelum konfigurasi diganti.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
 
       <Dialog
         open={categoryDialogOpen}
@@ -666,86 +671,85 @@ export function TemplatesManager() {
         </DialogContent>
       </Dialog>
 
-      <Dialog
-        open={draft !== null}
-        onOpenChange={(open) => {
-          if (!open) requestCloseDraft();
-        }}
-      >
-        {draft && (
-          <DialogContent
-            className="max-h-[90vh] max-w-3xl overflow-y-auto"
-            showCloseButton={false}
-          >
-            <form onSubmit={saveDraft} className="space-y-5">
-              <DialogHeader>
-                <DialogTitle>
-                  {draft.id ? "Edit template" : "Template baru"}
-                </DialogTitle>
-                <DialogDescription>
-                  Atur nama, kategori, dan konfigurasi pilihan menu.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="draft-template-name">Nama</Label>
-                  <Input
-                    id="draft-template-name"
-                    required
-                    maxLength={120}
-                    value={draft.name}
-                    onChange={(event) =>
-                      setDraft({ ...draft, name: event.target.value })
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="draft-template-category">Kategori</Label>
-                  <Select
-                    value={draft.categoryId || "NONE"}
-                    onValueChange={(value) =>
-                      setDraft({
-                        ...draft,
-                        categoryId: value === "NONE" ? "" : value,
-                      })
-                    }
-                  >
-                    <SelectTrigger id="draft-template-category">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="NONE">Tanpa kategori</SelectItem>
-                      {categories.map((category) => (
-                        <SelectItem key={category.id} value={category.id}>
-                          {category.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+      {draft && (
+        <section className="space-y-6" aria-labelledby="template-editor-title">
+          <header className="flex flex-wrap items-start justify-between gap-4 border-b pb-5">
+            <div className="space-y-1">
+              <h2 id="template-editor-title" className="text-2xl font-semibold">
+                {draft.id ? "Edit template" : "Template baru"}
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                Atur nama, kategori, dan konfigurasi pilihan menu.
+              </p>
+              <p role="status" className="text-sm text-warning">
+                Perubahan template disimpan hanya setelah memilih Simpan
+                template.
+              </p>
+            </div>
+            <Button type="button" variant="outline" onClick={requestCloseDraft}>
+              Kembali ke template
+            </Button>
+          </header>
+          <form onSubmit={saveDraft} className="space-y-5">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="draft-template-name">Nama</Label>
+                <Input
+                  id="draft-template-name"
+                  required
+                  maxLength={120}
+                  value={draft.name}
+                  onChange={(event) =>
+                    setDraft({ ...draft, name: event.target.value })
+                  }
+                />
               </div>
-              <ConfigurationEditor
-                value={draft.configuration}
-                onChange={(configuration) =>
-                  setDraft({ ...draft, configuration })
-                }
-              />
-              <DialogFooter>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={requestCloseDraft}
+              <div className="space-y-2">
+                <Label htmlFor="draft-template-category">Kategori</Label>
+                <Select
+                  value={draft.categoryId || "NONE"}
+                  onValueChange={(value) =>
+                    setDraft({
+                      ...draft,
+                      categoryId: value === "NONE" ? "" : value,
+                    })
+                  }
                 >
-                  Batal
-                </Button>
-                <Button type="submit" loading={busy}>
-                  Simpan template
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        )}
-      </Dialog>
+                  <SelectTrigger id="draft-template-category">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="NONE">Tanpa kategori</SelectItem>
+                    {categories.map((category) => (
+                      <SelectItem key={category.id} value={category.id}>
+                        {category.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <ConfigurationEditor
+              value={draft.configuration}
+              onChange={(configuration) =>
+                setDraft({ ...draft, configuration })
+              }
+            />
+            <div className="sticky bottom-0 flex flex-col-reverse gap-2 border-t bg-background p-3 sm:flex-row sm:justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={requestCloseDraft}
+              >
+                Batal
+              </Button>
+              <Button type="submit" loading={busy}>
+                Simpan template
+              </Button>
+            </div>
+          </form>
+        </section>
+      )}
 
       <AlertDialog
         open={categoryToDelete !== null}
@@ -791,9 +795,11 @@ export function TemplatesManager() {
           <AlertDialogHeader>
             <AlertDialogTitle>Ganti konfigurasi menu?</AlertDialogTitle>
             <AlertDialogDescription>
-              Konfigurasi menu{" "}
-              {menus.find((menu) => menu.id === selectedMenu)?.name} akan
-              diganti menurut mode yang dipilih.
+              Template {templateToApply?.name} akan disalin ke menu{" "}
+              {menus.find((menu) => menu.id === selectedMenu)?.name}.{" "}
+              {applyMode === "REPLACE_ALL"
+                ? "Mode ini mengganti semua grup varian dan add-on yang ada."
+                : "Mode ini mengganti jenis konfigurasi yang tersedia pada template dan mempertahankan jenis lainnya."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

@@ -11,6 +11,7 @@ export default async function AdminTransactionDetailPage({
       orderId={orderId}
       endpoint="/api/v1/admin/transactions"
       backHref="/admin/transactions"
+      adminPresentation
     />
   );
 }

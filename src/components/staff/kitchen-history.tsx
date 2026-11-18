@@ -146,14 +146,15 @@ export function KitchenHistory() {
               {tickets
                 .filter((ticket) => ticket.operational_date === date)
                 .map((ticket) => (
-                  <Card key={ticket.id}>
-                    <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
-                      <div>
-                        <p className="font-medium">
+                  <Card key={ticket.id} className="min-w-0">
+                    <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+                      <div className="min-w-0">
+                        <p className="break-words font-semibold tabular-nums">
                           {ticket.ticket_payload_snapshot.orderNumber} · Meja{" "}
                           {ticket.ticket_payload_snapshot.tableNumber}
                         </p>
                         <p className="text-sm text-muted-foreground">
+                          Dibayar pukul{" "}
                           {new Date(ticket.paid_at).toLocaleTimeString(
                             "id-ID",
                             {
@@ -168,8 +169,17 @@ export function KitchenHistory() {
                             ? ""
                             : "s"}
                         </p>
+                        {ticket.ticket_payload_snapshot.customerName && (
+                          <p className="mt-1 break-words text-sm">
+                            {ticket.ticket_payload_snapshot.customerName}
+                          </p>
+                        )}
                       </div>
-                      <Button variant="outline" size="sm" asChild>
+                      <Button
+                        variant="outline"
+                        className="min-h-11 w-full shrink-0 sm:w-auto"
+                        asChild
+                      >
                         <Link href={`/staff/queue/${ticket.id}?from=history`}>
                           Lihat detail
                         </Link>

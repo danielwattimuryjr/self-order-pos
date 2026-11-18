@@ -44,10 +44,13 @@ export function KitchenQueue() {
   const [error, setError] = useState("");
   const [connected, setConnected] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const knownIds = useRef<Set<string> | null>(null);
 
   const load = useCallback(
     async (playForNew = true) => {
+      setRefreshing(true);
       try {
         const response = await fetch("/api/v1/staff/kitchen/queue", {
           cache: "no-store",
@@ -67,6 +70,7 @@ export function KitchenQueue() {
           playNotice();
         knownIds.current = nextIds;
         setTickets(next);
+        setLastUpdated(new Date());
         setError("");
       } catch (loadError) {
         setError(
@@ -76,6 +80,7 @@ export function KitchenQueue() {
         );
       } finally {
         setLoading(false);
+        setRefreshing(false);
       }
     },
     [soundEnabled],
@@ -141,13 +146,31 @@ export function KitchenQueue() {
           {soundEnabled ? "Matikan Suara" : "Aktifkan Suara"}
         </Button>
       </div>
-      <div
-        role="status"
-        className={connected ? "text-sm text-success" : "text-sm text-warning"}
-      >
-        {connected
-          ? "Terhubung"
-          : "Koneksi Terputus · mencoba menyambungkan kembali"}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+        <p
+          role="status"
+          className={connected ? "text-success" : "text-warning"}
+        >
+          {connected
+            ? "Pembaruan langsung terhubung"
+            : "Pembaruan langsung terputus · mencoba menyambungkan kembali"}
+        </p>
+        {refreshing && (
+          <p role="status" className="text-muted-foreground">
+            Memperbarui antrean…
+          </p>
+        )}
+        {lastUpdated && (
+          <p className="text-muted-foreground">
+            Terakhir berhasil diperbarui{" "}
+            {lastUpdated.toLocaleTimeString("id-ID", {
+              timeZone: "Asia/Jakarta",
+              hour: "2-digit",
+              minute: "2-digit",
+            })}{" "}
+            WIB
+          </p>
+        )}
       </div>
       {error && (
         <Card>
@@ -170,36 +193,48 @@ export function KitchenQueue() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-3 lg:grid-cols-2">
+        <div className="grid gap-3 xl:grid-cols-2">
           {tickets.map((ticket) => (
-            <Card key={ticket.id}>
-              <CardContent className="space-y-3 p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="font-semibold">
+            <Card key={ticket.id} className="min-w-0">
+              <CardContent className="space-y-4 p-4 sm:p-5">
+                <div className="flex min-w-0 items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="break-words text-lg font-semibold tabular-nums">
                       {ticket.ticket_payload_snapshot.orderNumber} · Meja{" "}
                       {ticket.ticket_payload_snapshot.tableNumber}
                     </p>
-                    <p className="text-xs text-muted-foreground">
-                      Dibayar{" "}
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Dibayar pukul{" "}
                       {new Date(ticket.paid_at).toLocaleTimeString("id-ID", {
                         timeZone: "Asia/Jakarta",
                         hour: "2-digit",
                         minute: "2-digit",
                       })}{" "}
                       WIB
-                      {ticket.ticket_payload_snapshot.customerName
-                        ? ` · ${ticket.ticket_payload_snapshot.customerName}`
-                        : ""}
                     </p>
+                    {ticket.ticket_payload_snapshot.customerName && (
+                      <p className="mt-1 break-words text-sm">
+                        {ticket.ticket_payload_snapshot.customerName}
+                      </p>
+                    )}
                   </div>
-                  {ticket.isNew && <Badge>BARU</Badge>}
+                  {ticket.isNew && (
+                    <Badge
+                      aria-label="Pesanan baru untuk akun Anda"
+                      className="shrink-0"
+                    >
+                      BARU
+                    </Badge>
+                  )}
                 </div>
-                <ul className="space-y-1 text-sm">
+                <ul className="space-y-3 border-t pt-3 text-sm">
                   {ticket.ticket_payload_snapshot.items.map((item, index) => (
-                    <li key={`${item.name}-${index}`}>
-                      <span>
-                        {item.quantity} × {item.name}
+                    <li className="min-w-0" key={`${item.name}-${index}`}>
+                      <span className="font-medium">
+                        <span className="mr-2 inline-block min-w-8 tabular-nums">
+                          {item.quantity}×
+                        </span>
+                        {item.name}
                       </span>
                       {item.variants?.map((choice, choiceIndex) => (
                         <span
@@ -219,14 +254,19 @@ export function KitchenQueue() {
                         </span>
                       ))}
                       {item.note && (
-                        <span className="block pl-5 text-xs text-muted-foreground">
-                          Catatan: {item.note}
+                        <span className="mt-1 block break-words rounded-md bg-muted px-3 py-2 text-sm">
+                          <span className="font-medium">Catatan:</span>{" "}
+                          {item.note}
                         </span>
                       )}
                     </li>
                   ))}
                 </ul>
-                <Button variant="outline" size="sm" asChild>
+                <Button
+                  variant="outline"
+                  className="min-h-11 w-full sm:w-auto"
+                  asChild
+                >
                   <Link href={`/staff/queue/${ticket.id}`}>Lihat detail</Link>
                 </Button>
               </CardContent>

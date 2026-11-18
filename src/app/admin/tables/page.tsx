@@ -9,11 +9,13 @@ export default async function AdminTablesPage() {
     .order("table_number");
   return (
     <main>
-      <h1 className="text-2xl font-semibold">Meja</h1>
-      <p className="mt-2 text-neutral-600">
-        Kode QR permanen menggunakan UUIDv4. Mengubah nomor meja tidak mengubah
-        QR.
-      </p>
+      <header className="space-y-1">
+        <h1 className="text-page-title font-semibold">Meja</h1>
+        <p className="text-sm text-muted-foreground">
+          Kode QR permanen menggunakan UUIDv4. Mengubah nomor meja tidak
+          mengubah QR.
+        </p>
+      </header>
       <TablesManager initialTables={data ?? []} />
     </main>
   );

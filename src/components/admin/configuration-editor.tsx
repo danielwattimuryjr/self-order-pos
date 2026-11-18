@@ -47,7 +47,7 @@ export function ConfigurationEditor({ value, onChange }: Props) {
   return (
     <div className="space-y-4">
       <Card>
-        <CardHeader className="flex-row items-center justify-between">
+        <CardHeader className="flex-col items-start gap-2 sm:flex-row sm:items-center">
           <CardTitle>Varian</CardTitle>
           <Button
             type="button"
@@ -80,6 +80,12 @@ export function ConfigurationEditor({ value, onChange }: Props) {
           </Button>
         </CardHeader>
         <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Pelanggan memilih satu opsi per grup. Penyesuaian ditambah ke harga
+            dasar; harga pengganti menggantikan harga dasar, lalu penyesuaian
+            dari grup lain ditambahkan. Maksimal satu grup dapat memakai opsi
+            harga pengganti.
+          </p>
           {!value.variants.length && (
             <p className="text-sm text-muted-foreground">Belum ada varian.</p>
           )}
@@ -159,7 +165,7 @@ export function ConfigurationEditor({ value, onChange }: Props) {
                         <Label
                           htmlFor={`variant-price-${groupIndex}-${optionIndex}`}
                         >
-                          Harga (Rp)
+                          Nilai harga (Rp)
                         </Label>
                         <Input
                           id={`variant-price-${groupIndex}-${optionIndex}`}
@@ -284,7 +290,7 @@ export function ConfigurationEditor({ value, onChange }: Props) {
       </Card>
 
       <Card>
-        <CardHeader className="flex-row items-center justify-between">
+        <CardHeader className="flex-col items-start gap-2 sm:flex-row sm:items-center">
           <CardTitle>Add-on</CardTitle>
           <Button
             type="button"
@@ -313,6 +319,10 @@ export function ConfigurationEditor({ value, onChange }: Props) {
           </Button>
         </CardHeader>
         <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Pelanggan dapat memilih beberapa opsi sesuai batas min. dan maks.
+            Harga dihitung per tambahan dan mengikuti jumlah tiap opsi.
+          </p>
           {!value.addons.length && (
             <p className="text-sm text-muted-foreground">Belum ada add-on.</p>
           )}

@@ -18,14 +18,14 @@
   --secondary: #f3f0ec;
   --secondary-foreground: #292521;
   --muted: #f3f0ec;
-  --muted-foreground: #79736d;
+  --muted-foreground: #6d655e;
   --accent: #f8eae3;
   --accent-foreground: #292521;
-  --destructive: #c43d3d;
+  --destructive: #b83232;
   --destructive-foreground: #ffffff;
   --success: #237a4b;
   --success-soft: #e8f5ec;
-  --warning: #a76716;
+  --warning: #86520d;
   --warning-soft: #fff4db;
   --information: #2865a6;
   --information-soft: #eaf2fc;
@@ -74,6 +74,20 @@
   --radius-md: var(--radius);
   --radius-lg: calc(var(--radius) + 4px);
   --radius-xl: calc(var(--radius) + 8px);
+  --radius-card: 0.75rem;
+  --radius-overlay: 1rem;
+  --text-page-title: 1.75rem;
+  --text-page-title--line-height: 2rem;
+  --text-2xl: var(--text-page-title);
+  --text-2xl--line-height: var(--text-page-title--line-height);
+  --text-section-title: 1.375rem;
+  --text-section-title--line-height: 1.75rem;
+  --text-card-title: 1.125rem;
+  --text-card-title--line-height: 1.5rem;
+  --text-label: 0.875rem;
+  --text-label--line-height: 1.25rem;
+  --text-caption: 0.75rem;
+  --text-caption--line-height: 1rem;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -284,5 +298,11 @@ body {
 
   button:active {
     translate: none !important;
+  }
+}
+
+@media (forced-colors: active) {
+  :focus-visible {
+    outline: 2px solid Highlight;
   }
 }
