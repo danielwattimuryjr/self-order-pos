@@ -4,9 +4,17 @@ import { ManagementShell } from "@/components/layout/management-shell";
 
 export const dynamic = "force-dynamic";
 
-export default async function StaffLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default async function StaffLayout({
+  children,
+}: Readonly<{ children: React.ReactNode }>) {
   const staff = await requireRole("STAFF");
   return (
-    <ManagementShell role="STAFF" staffName={staff.name} signOutAction={signOut}>{children}</ManagementShell>
+    <ManagementShell
+      role="STAFF"
+      staffName={staff.name}
+      signOutAction={signOut}
+    >
+      {children}
+    </ManagementShell>
   );
 }

@@ -13,7 +13,9 @@ const serverEnvSchema = z.object({
 export function getServerEnv() {
   const result = serverEnvSchema.safeParse(process.env);
   if (!result.success) {
-    throw new Error(`Invalid server environment configuration: ${z.prettifyError(result.error)}`);
+    throw new Error(
+      `Invalid server environment configuration: ${z.prettifyError(result.error)}`,
+    );
   }
   return result.data;
 }

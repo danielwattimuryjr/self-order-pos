@@ -7,12 +7,18 @@ const customerCatalogQuerySchema = z.object({
   search: z.string().trim().max(200).default(""),
   category: z.uuid().optional(),
   page: z.coerce.number().int().min(1).max(100_000).default(1),
-  retainMenuId: z.array(z.uuid()).max(CUSTOMER_CATALOG_MAX_RETAINED_MENU_IDS).default([]),
+  retainMenuId: z
+    .array(z.uuid())
+    .max(CUSTOMER_CATALOG_MAX_RETAINED_MENU_IDS)
+    .default([]),
 });
 
 export type CustomerCatalogQuery = z.infer<typeof customerCatalogQuerySchema>;
 
-function getSingleValue(params: URLSearchParams, name: string): string | undefined | string[] {
+function getSingleValue(
+  params: URLSearchParams,
+  name: string,
+): string | undefined | string[] {
   const values = params.getAll(name);
   if (values.length > 1) return values;
   return values[0];
@@ -29,6 +35,8 @@ export function parseCustomerCatalogQuery(params: URLSearchParams) {
 
 export function buildCatalogIlikePattern(query: string): string {
   const escapedLikeValue = query.trim().replace(/[\\%_]/g, "\\$&");
-  const escapedPostgrestValue = escapedLikeValue.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
+  const escapedPostgrestValue = escapedLikeValue
+    .replaceAll("\\", "\\\\")
+    .replaceAll('"', '\\"');
   return `"%${escapedPostgrestValue}%"`;
 }

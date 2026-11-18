@@ -9,7 +9,10 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "prebuild": "npm run format:check",
     "start": "next start",
+    "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json,css}\" \"e2e/**/*.ts\" \"scripts/**/*.{js,mjs,cjs,ts}\" \".github/workflows/*.yml\" package.json package-lock.json tsconfig.json next.config.ts eslint.config.mjs playwright.config.ts",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,json,css}\" \"e2e/**/*.ts\" \"scripts/**/*.{js,mjs,cjs,ts}\" \".github/workflows/*.yml\" package.json package-lock.json tsconfig.json next.config.ts eslint.config.mjs playwright.config.ts",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -45,6 +48,7 @@
     "@types/react-dom": "^19.2.0",
     "eslint": "^9.39.0",
     "eslint-config-next": "^16.0.0",
+    "prettier": "^3.10.1",
     "tailwind-merge": "^3.3.1",
     "tailwindcss": "^4.1.16",
     "typescript": "^5.9.3",

@@ -43,6 +43,7 @@ export async function requireStaff(): Promise<CurrentStaff> {
 
 export async function requireRole(role: StaffRole): Promise<CurrentStaff> {
   const staff = await requireStaff();
-  if (staff.role !== role) redirect(staff.role === "ADMIN" ? "/admin/dashboard" : "/staff/queue");
+  if (staff.role !== role)
+    redirect(staff.role === "ADMIN" ? "/admin/dashboard" : "/staff/queue");
   return staff;
 }

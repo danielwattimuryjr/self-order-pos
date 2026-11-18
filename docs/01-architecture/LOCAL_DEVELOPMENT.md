@@ -119,7 +119,23 @@ npm run dev
 
 Gunakan script yang benar-benar tersedia di `package.json`; jangan mengasumsikan nama script jika belum didefinisikan.
 
-## 8. Local, staging, and production separation
+## 8. Code formatting
+
+Format source code dan konfigurasi proyek dengan:
+
+```bash
+npm run format
+```
+
+Periksa format tanpa mengubah file dengan:
+
+```bash
+npm run format:check
+```
+
+Script `prebuild` menjalankan pemeriksaan format sebelum `npm run build`. Vercel harus menggunakan `npm run build` sebagai Build Command agar pemeriksaan ini berjalan.
+
+## 9. Local, staging, and production separation
 
 | Environment | Application | Supabase | Purpose |
 |---|---|---|---|
@@ -129,7 +145,7 @@ Gunakan script yang benar-benar tersedia di `package.json`; jangan mengasumsikan
 
 Local and staging must not share production credentials or production data. Production schema changes must be applied through reviewed migrations and a controlled release process.
 
-## 9. Troubleshooting checklist
+## 10. Troubleshooting checklist
 
 - Docker Desktop is running and has enough allocated resources.
 - `npx supabase status` reports the expected services.
@@ -138,13 +154,13 @@ Local and staging must not share production credentials or production data. Prod
 - The local database has been reset/applied after migration changes.
 - If the stack is unhealthy, inspect `npx supabase status` and Docker container logs before deleting volumes or resetting data.
 
-## 10. Non-goals and boundaries
+## 11. Non-goals and boundaries
 
 - This decision does not mean Supabase must be self-hosted in production. Production V1 uses hosted Supabase.
 - Docker Desktop is the local container runtime; Supabase CLI manages the Supabase local stack.
 - Do not add a separate Express backend or a manually assembled Supabase Docker Compose stack for V1; the agreed application architecture uses Next.js Route Handlers and Supabase CLI.
 
-## 11. Phase 8 local release checks
+## 12. Phase 8 local release checks
 
 Install the Playwright browser once:
 

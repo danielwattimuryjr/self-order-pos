@@ -14,13 +14,40 @@ export function LoginForm() {
 
   return (
     <form action={action} className="space-y-5">
-      <div className="space-y-2"><Label htmlFor="login-email">Email</Label><Input id="login-email" name="email" type="email" autoComplete="username" required /></div>
-      <div className="space-y-2"><Label htmlFor="login-password">Kata sandi</Label><Input id="login-password" name="password" type="password" autoComplete="current-password" required /></div>
-      {state.error && <Alert variant="destructive"><AlertDescription>{state.error}</AlertDescription></Alert>}
+      <div className="space-y-2">
+        <Label htmlFor="login-email">Email</Label>
+        <Input
+          id="login-email"
+          name="email"
+          type="email"
+          autoComplete="username"
+          required
+        />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="login-password">Kata sandi</Label>
+        <Input
+          id="login-password"
+          name="password"
+          type="password"
+          autoComplete="current-password"
+          required
+        />
+      </div>
+      {state.error && (
+        <Alert variant="destructive">
+          <AlertDescription>{state.error}</AlertDescription>
+        </Alert>
+      )}
       <Button type="submit" loading={pending} className="w-full">
         {pending ? "Memproses…" : "Masuk"}
       </Button>
-      <a href="/forgot-password" className="block text-center text-sm text-muted-foreground underline">Lupa kata sandi?</a>
+      <a
+        href="/forgot-password"
+        className="block text-center text-sm text-muted-foreground underline"
+      >
+        Lupa kata sandi?
+      </a>
     </form>
   );
 }

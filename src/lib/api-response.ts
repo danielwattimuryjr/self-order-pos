@@ -11,7 +11,11 @@ export type ApiFailure = {
 };
 
 export function success<T>(data: T, message = "Berhasil") {
-  return Response.json({ status: "success", message, data } satisfies ApiSuccess<T>);
+  return Response.json({
+    status: "success",
+    message,
+    data,
+  } satisfies ApiSuccess<T>);
 }
 
 export function failure(code: string, message: string, status: number) {

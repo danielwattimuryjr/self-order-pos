@@ -37,7 +37,12 @@ import { Separator } from "@/components/ui/separator";
 type SignOutAction = () => Promise<void>;
 type AppRole = "ADMIN" | "STAFF";
 
-type NavigationLink = { href: string; label: string; icon: typeof LayoutDashboard; disabled?: boolean };
+type NavigationLink = {
+  href: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  disabled?: boolean;
+};
 
 const adminLinks: NavigationLink[] = [
   { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -77,25 +82,45 @@ export function ManagementShell({
     <SidebarProvider>
       <Sidebar collapsible="icon">
         <SidebarHeader>
-          <Link href={role === "ADMIN" ? "/admin/dashboard" : "/staff/queue"} className="truncate px-2 py-1 font-semibold">
+          <Link
+            href={role === "ADMIN" ? "/admin/dashboard" : "/staff/queue"}
+            className="truncate px-2 py-1 font-semibold"
+          >
             QR Restaurant
           </Link>
-          <p className="truncate px-2 text-sm text-sidebar-foreground/70">{staffName} · {role === "ADMIN" ? "Admin" : "Staff"}</p>
+          <p className="truncate px-2 text-sm text-sidebar-foreground/70">
+            {staffName} · {role === "ADMIN" ? "Admin" : "Staff"}
+          </p>
         </SidebarHeader>
         <SidebarContent>
           <SidebarGroup>
-            <SidebarGroupLabel>{role === "ADMIN" ? "Manajemen" : "Operasional"}</SidebarGroupLabel>
+            <SidebarGroupLabel>
+              {role === "ADMIN" ? "Manajemen" : "Operasional"}
+            </SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 {links.map(({ href, label, icon: Icon, disabled }) => (
                   <SidebarMenuItem key={href}>
                     <SidebarMenuButton
                       asChild={!disabled}
-                      isActive={!disabled && (pathname === href || pathname.startsWith(`${href}/`))}
+                      isActive={
+                        !disabled &&
+                        (pathname === href || pathname.startsWith(`${href}/`))
+                      }
                       disabled={disabled}
                       tooltip={label}
                     >
-                      {disabled ? <><Icon /><span>{label}</span></> : <Link href={href}><Icon /><span>{label}</span></Link>}
+                      {disabled ? (
+                        <>
+                          <Icon />
+                          <span>{label}</span>
+                        </>
+                      ) : (
+                        <Link href={href}>
+                          <Icon />
+                          <span>{label}</span>
+                        </Link>
+                      )}
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 ))}
@@ -120,7 +145,9 @@ export function ManagementShell({
         <header className="sticky top-0 z-10 flex h-14 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur supports-backdrop-filter:bg-background/80">
           <SidebarTrigger aria-label="Buka atau tutup navigasi" />
           <Separator orientation="vertical" className="h-5" />
-          <span className="text-sm font-medium">{role === "ADMIN" ? "Admin" : "Staff"}</span>
+          <span className="text-sm font-medium">
+            {role === "ADMIN" ? "Admin" : "Staff"}
+          </span>
         </header>
         <div className="min-w-0 flex-1 p-4 md:p-8">{children}</div>
       </div>

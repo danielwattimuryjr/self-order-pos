@@ -15,7 +15,9 @@ export const metadata: Metadata = {
   description: "Pemesanan restoran melalui QR meja.",
 };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default function RootLayout({
+  children,
+}: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="id">
       <body className={inter.variable}>

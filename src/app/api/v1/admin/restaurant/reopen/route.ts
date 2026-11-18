@@ -7,6 +7,11 @@ export async function POST() {
   if ("response" in auth) return auth.response;
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("admin_reopen_restaurant");
-  if (error) return failure("REOPEN_FAILED", "Restoran belum dapat dibuka kembali.", 500);
+  if (error)
+    return failure(
+      "REOPEN_FAILED",
+      "Restoran belum dapat dibuka kembali.",
+      500,
+    );
   return success(data, "Status tutup sementara dibatalkan.");
 }

@@ -1,13 +1,18 @@
 import type { MenuConfiguration } from "@/lib/catalog/built-in-templates";
 
-export function mapConfiguration(variantGroups: Array<Record<string, unknown>>, addonGroups: Array<Record<string, unknown>>): MenuConfiguration {
+export function mapConfiguration(
+  variantGroups: Array<Record<string, unknown>>,
+  addonGroups: Array<Record<string, unknown>>,
+): MenuConfiguration {
   return {
     variants: variantGroups.map((group) => ({
       id: String(group.id),
       name: String(group.name),
       required: Boolean(group.required),
       sortOrder: Number(group.sort_order),
-      options: ((group.menu_variant_options ?? []) as Array<Record<string, unknown>>)
+      options: (
+        (group.menu_variant_options ?? []) as Array<Record<string, unknown>>
+      )
         .sort((a, b) => Number(a.sort_order) - Number(b.sort_order))
         .map((option) => ({
           id: String(option.id),
@@ -25,7 +30,9 @@ export function mapConfiguration(variantGroups: Array<Record<string, unknown>>, 
       minSelect: Number(group.min_select),
       maxSelect: Number(group.max_select),
       sortOrder: Number(group.sort_order),
-      options: ((group.menu_addon_options ?? []) as Array<Record<string, unknown>>)
+      options: (
+        (group.menu_addon_options ?? []) as Array<Record<string, unknown>>
+      )
         .sort((a, b) => Number(a.sort_order) - Number(b.sort_order))
         .map((option) => ({
           id: String(option.id),

@@ -14,7 +14,12 @@ export default async function OrderPage({
   const initialFilters = {
     search: typeof query.search === "string" ? query.search.trim() : "",
     category: typeof query.category === "string" ? query.category : "",
-    page: Number.isSafeInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1,
+    page:
+      Number.isSafeInteger(requestedPage) && requestedPage > 0
+        ? requestedPage
+        : 1,
   };
-  return <CustomerOrdering tableCode={tableCode} initialFilters={initialFilters} />;
+  return (
+    <CustomerOrdering tableCode={tableCode} initialFilters={initialFilters} />
+  );
 }

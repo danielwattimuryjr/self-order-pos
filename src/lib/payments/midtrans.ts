@@ -48,7 +48,8 @@ function summarizeProviderError(payload: unknown) {
   ]
     .flatMap((value) => {
       if (typeof value === "string") return [value];
-      if (Array.isArray(value)) return value.filter((item): item is string => typeof item === "string");
+      if (Array.isArray(value))
+        return value.filter((item): item is string => typeof item === "string");
       if (value && typeof value === "object") {
         const nested = value as Record<string, unknown>;
         return [nested.message, nested.error, nested.detail].filter(
@@ -70,7 +71,8 @@ function summarizeProviderError(payload: unknown) {
   ]
     .flatMap((value) => {
       if (typeof value === "string") return [value];
-      if (Array.isArray(value)) return value.filter((item): item is string => typeof item === "string");
+      if (Array.isArray(value))
+        return value.filter((item): item is string => typeof item === "string");
       if (value && typeof value === "object") {
         const nested = value as Record<string, unknown>;
         return [nested.message, nested.error, nested.detail].filter(
@@ -88,10 +90,16 @@ function summarizeProviderError(payload: unknown) {
     .slice(0, 200);
 
   let category = "UNCLASSIFIED_RESPONSE";
-  if (/rbac.{0,30}access denied/.test(candidates)) category = "ENVOY_RBAC_DENIED";
-  else if (/accept|content.?type|representation|format/.test(candidates)) category = "CONTENT_NEGOTIATION_REJECTED";
-  else if (/server key|api key|credential|unauthorized|authentication/.test(candidates)) category = "AUTHORIZATION_REJECTED";
-  else if (/policy|permission|forbidden|access denied/.test(candidates)) category = "POLICY_OR_ACCESS_DENIED";
+  if (/rbac.{0,30}access denied/.test(candidates))
+    category = "ENVOY_RBAC_DENIED";
+  else if (/accept|content.?type|representation|format/.test(candidates))
+    category = "CONTENT_NEGOTIATION_REJECTED";
+  else if (
+    /server key|api key|credential|unauthorized|authentication/.test(candidates)
+  )
+    category = "AUTHORIZATION_REJECTED";
+  else if (/policy|permission|forbidden|access denied/.test(candidates))
+    category = "POLICY_OR_ACCESS_DENIED";
   return {
     category,
     keys,
@@ -154,8 +162,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new MidtransRequestError("MIDTRANS_NETWORK_ERROR");
   }
   const payload = (await response.json().catch(() => null)) as
-    | (T & { error_messages?: string[]; status_message?: string })
-    | null;
+    (T & { error_messages?: string[]; status_message?: string }) | null;
   if (!response.ok || !payload) {
     const errorSummary = summarizeProviderError(payload);
     throw new MidtransRequestError(
@@ -239,6 +246,7 @@ export function verifyNotificationSignature(input: {
   signature: string;
 }) {
   const signatureSecretKey = getServerEnv().MIDTRANS_SIGNATURE_SECRET_KEY;
-  if (!signatureSecretKey) throw new MidtransRequestError("MIDTRANS_NOT_CONFIGURED");
+  if (!signatureSecretKey)
+    throw new MidtransRequestError("MIDTRANS_NOT_CONFIGURED");
   return verifyMidtransSignature({ ...input, signatureSecretKey });
 }

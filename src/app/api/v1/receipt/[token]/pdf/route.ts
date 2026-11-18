@@ -7,7 +7,10 @@ const privateResponse = (response: Response) => {
   return response;
 };
 
-export async function GET(request: Request, context: { params: Promise<{ token: string }> }) {
+export async function GET(
+  request: Request,
+  context: { params: Promise<{ token: string }> },
+) {
   const { token } = await context.params;
   const loaded = await loadAuthorizedReceipt(request, token);
   if (!loaded.ok) return privateResponse(loaded.response);

@@ -161,9 +161,10 @@ export async function POST(
       customerEmail: order.receipt_email,
       expiresAt: attempt.expires_at,
     });
-    const qrUrl = charge.actions?.find(
-      (action) => action.name === "generate-qr-code",
-    )?.url ?? (charge.transaction_id ? qrisCodeUrl(charge.transaction_id) : undefined);
+    const qrUrl =
+      charge.actions?.find((action) => action.name === "generate-qr-code")
+        ?.url ??
+      (charge.transaction_id ? qrisCodeUrl(charge.transaction_id) : undefined);
     if (!qrUrl || !charge.transaction_id) return null;
     const { error: saveError } = await supabase.rpc("save_payment_qr", {
       p_payment_id: attempt.id,
@@ -236,11 +237,12 @@ export async function POST(
       );
     }
     try {
-      const providerQrUrl = provider.actions?.find(
-        (action) => action.name === "generate-qr-code",
-      )?.url ?? (provider.transaction_id
-        ? qrisCodeUrl(provider.transaction_id)
-        : undefined);
+      const providerQrUrl =
+        provider.actions?.find((action) => action.name === "generate-qr-code")
+          ?.url ??
+        (provider.transaction_id
+          ? qrisCodeUrl(provider.transaction_id)
+          : undefined);
       if (providerQrUrl && provider.transaction_id) {
         const { error: saveError } = await supabase.rpc("save_payment_qr", {
           p_payment_id: attempt.id,

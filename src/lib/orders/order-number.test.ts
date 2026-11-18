@@ -7,7 +7,9 @@ describe("formatOperationalOrderNumber", () => {
   });
 
   it("expands the sequence after 999", () => {
-    expect(formatOperationalOrderNumber("2026-04-09", 1_000)).toBe("ORD-0904261000");
+    expect(formatOperationalOrderNumber("2026-04-09", 1_000)).toBe(
+      "ORD-0904261000",
+    );
   });
 
   it("rejects invalid date or sequence values", () => {

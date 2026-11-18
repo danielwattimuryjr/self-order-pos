@@ -4,14 +4,23 @@ const baseURL = process.env.E2E_BASE_URL ?? "http://127.0.0.1:3100";
 const base = new URL(baseURL);
 const loopback = new Set(["127.0.0.1", "localhost", "::1"]);
 
-if (base.protocol !== "http:" || !loopback.has(base.hostname) || base.port !== "3100") {
-  throw new Error("E2E_BASE_URL must use a loopback hostname on port 3100. E2E tests never target hosted deployments.");
+if (
+  base.protocol !== "http:" ||
+  !loopback.has(base.hostname) ||
+  base.port !== "3100"
+) {
+  throw new Error(
+    "E2E_BASE_URL must use a loopback hostname on port 3100. E2E tests never target hosted deployments.",
+  );
 }
 
-const supabaseURL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "http://127.0.0.1:54321";
+const supabaseURL =
+  process.env.NEXT_PUBLIC_SUPABASE_URL ?? "http://127.0.0.1:54321";
 const supabase = new URL(supabaseURL);
 if (supabase.protocol !== "http:" || !loopback.has(supabase.hostname)) {
-  throw new Error("E2E requires a local Supabase URL. Hosted Supabase projects are blocked.");
+  throw new Error(
+    "E2E requires a local Supabase URL. Hosted Supabase projects are blocked.",
+  );
 }
 
 const appPort = String(base.port || "3100");
@@ -41,7 +50,8 @@ export default defineConfig({
       ...process.env,
       E2E_ISOLATED_DEV: "1",
       NEXT_PUBLIC_SUPABASE_URL: supabase.origin,
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "local-e2e-public-key",
+      NEXT_PUBLIC_SUPABASE_ANON_KEY:
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "local-e2e-public-key",
       SUPABASE_SERVICE_ROLE_KEY: "local-e2e-placeholder-service-role-key",
       NEXT_PUBLIC_SITE_URL: base.origin,
       MIDTRANS_SERVER_KEY: "",

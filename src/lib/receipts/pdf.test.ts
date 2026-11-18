@@ -21,15 +21,17 @@ const receipt: ReceiptData = {
   operational_date: "2026-11-15",
   payment_method: "QRIS",
   receipt: { email_status: "NOT_REQUESTED", email_sent_at: null },
-  items: [{
-    menu_name_snapshot: "Nasi goreng 🌶️",
-    quantity: 1,
-    item_note: "Tidak pedas",
-    unit_price_snapshot: 15000,
-    line_total: 15000,
-    variant_snapshot: [{ group: "Level", option: "Sedang" }],
-    addon_snapshot: [],
-  }],
+  items: [
+    {
+      menu_name_snapshot: "Nasi goreng 🌶️",
+      quantity: 1,
+      item_note: "Tidak pedas",
+      unit_price_snapshot: 15000,
+      line_total: 15000,
+      variant_snapshot: [{ group: "Level", option: "Sedang" }],
+      addon_snapshot: [],
+    },
+  ],
 };
 
 describe("receipt PDF", () => {

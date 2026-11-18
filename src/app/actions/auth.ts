@@ -9,13 +9,20 @@ export type AuthActionState = { error?: string; success?: string };
 
 const emailSchema = z.email();
 
-export async function signIn(_state: AuthActionState, formData: FormData): Promise<AuthActionState> {
+export async function signIn(
+  _state: AuthActionState,
+  formData: FormData,
+): Promise<AuthActionState> {
   const email = emailSchema.safeParse(formData.get("email"));
   const password = z.string().min(1).safeParse(formData.get("password"));
-  if (!email.success || !password.success) return { error: "Email atau kata sandi tidak valid." };
+  if (!email.success || !password.success)
+    return { error: "Email atau kata sandi tidak valid." };
 
   const supabase = await createClient();
-  const { error } = await supabase.auth.signInWithPassword({ email: email.data, password: password.data });
+  const { error } = await supabase.auth.signInWithPassword({
+    email: email.data,
+    password: password.data,
+  });
   if (error) return { error: "Email atau kata sandi tidak cocok." };
 
   const staff = await getCurrentStaff();
@@ -23,7 +30,9 @@ export async function signIn(_state: AuthActionState, formData: FormData): Promi
     await supabase.auth.signOut();
     return { error: "Akun tidak aktif atau belum memiliki akses staf." };
   }
-  const { error: auditError } = await supabase.rpc("admin_record_auth_event", { p_action: "LOGIN" });
+  const { error: auditError } = await supabase.rpc("admin_record_auth_event", {
+    p_action: "LOGIN",
+  });
   if (auditError) {
     await supabase.auth.signOut();
     return { error: "Login belum dapat dicatat. Coba lagi nanti." };
@@ -34,7 +43,11 @@ export async function signIn(_state: AuthActionState, formData: FormData): Promi
 
 export async function signOut() {
   const supabase = await createClient();
-  try { await supabase.rpc("admin_record_auth_event", { p_action: "LOGOUT" }); } catch { /* Logout must complete if audit delivery is unavailable. */ }
+  try {
+    await supabase.rpc("admin_record_auth_event", { p_action: "LOGOUT" });
+  } catch {
+    /* Logout must complete if audit delivery is unavailable. */
+  }
   await supabase.auth.signOut({ scope: "local" });
   redirect("/login");
 }
@@ -51,7 +64,8 @@ export async function requestPasswordReset(
   const { error } = await supabase.auth.resetPasswordForEmail(email.data, {
     redirectTo: `${origin}/auth/callback?next=/reset-password`,
   });
-  if (error) return { error: "Email reset belum dapat dikirim. Coba lagi nanti." };
+  if (error)
+    return { error: "Email reset belum dapat dikirim. Coba lagi nanti." };
   return { success: "Jika email terdaftar, instruksi reset akan dikirim." };
 }
 
@@ -59,12 +73,22 @@ export async function updatePassword(
   _state: AuthActionState,
   formData: FormData,
 ): Promise<AuthActionState> {
-  const password = z.string().min(8).regex(/[A-Za-z]/).regex(/[0-9]/).safeParse(formData.get("password"));
-  if (!password.success) return { error: "Kata sandi minimal 8 karakter dan harus mengandung huruf serta angka." };
+  const password = z
+    .string()
+    .min(8)
+    .regex(/[A-Za-z]/)
+    .regex(/[0-9]/)
+    .safeParse(formData.get("password"));
+  if (!password.success)
+    return {
+      error:
+        "Kata sandi minimal 8 karakter dan harus mengandung huruf serta angka.",
+    };
 
   const supabase = await createClient();
   const { data } = await supabase.auth.getUser();
-  if (!data.user) return { error: "Sesi reset tidak valid atau sudah berakhir." };
+  if (!data.user)
+    return { error: "Sesi reset tidak valid atau sudah berakhir." };
 
   const { error } = await supabase.auth.updateUser({ password: password.data });
   if (error) return { error: "Kata sandi belum dapat diperbarui. Coba lagi." };

@@ -68,8 +68,7 @@ type TemplateDraft = {
   original: string;
 };
 type NameDialog =
-  | { kind: "duplicate"; template: Template }
-  | { kind: "from-menu"; menu: Menu };
+  { kind: "duplicate"; template: Template } | { kind: "from-menu"; menu: Menu };
 const blankConfig: MenuConfiguration = { variants: [], addons: [] };
 
 export function TemplatesManager() {
@@ -120,11 +119,13 @@ export function TemplatesManager() {
   // Initial state is loaded from the API, an external system.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    void load().catch((error: unknown) =>
-      toast.error(
-        error instanceof Error ? error.message : "Gagal memuat data.",
-      ),
-    ).finally(() => setInitialLoading(false));
+    void load()
+      .catch((error: unknown) =>
+        toast.error(
+          error instanceof Error ? error.message : "Gagal memuat data.",
+        ),
+      )
+      .finally(() => setInitialLoading(false));
   }, [load]);
 
   const visibleTemplates = useMemo(
@@ -148,26 +149,39 @@ export function TemplatesManager() {
     [templates, search, categoryFilter, sortBy],
   );
 
-  if (initialLoading) return (
-    <section aria-busy="true" aria-label="Memuat template" className="mt-6 space-y-5">
-      <span className="sr-only" role="status">Memuat template…</span>
-      <div aria-hidden="true" className="flex flex-wrap gap-3 rounded-xl border bg-card p-5">
-        <Skeleton className="h-9 w-56" />
-        <Skeleton className="h-9 w-40" />
-        <Skeleton className="h-9 w-32" />
-      </div>
-      <div aria-hidden="true" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {[0, 1, 2, 3].map((item) => (
-          <div key={item} className="space-y-3 rounded-xl border bg-card p-5">
-            <Skeleton className="h-5 w-2/3" />
-            <Skeleton className="h-4 w-full" />
-            <Skeleton className="h-4 w-1/2" />
-            <Skeleton className="mt-5 h-9 w-28" />
-          </div>
-        ))}
-      </div>
-    </section>
-  );
+  if (initialLoading)
+    return (
+      <section
+        aria-busy="true"
+        aria-label="Memuat template"
+        className="mt-6 space-y-5"
+      >
+        <span className="sr-only" role="status">
+          Memuat template…
+        </span>
+        <div
+          aria-hidden="true"
+          className="flex flex-wrap gap-3 rounded-xl border bg-card p-5"
+        >
+          <Skeleton className="h-9 w-56" />
+          <Skeleton className="h-9 w-40" />
+          <Skeleton className="h-9 w-32" />
+        </div>
+        <div
+          aria-hidden="true"
+          className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3"
+        >
+          {[0, 1, 2, 3].map((item) => (
+            <div key={item} className="space-y-3 rounded-xl border bg-card p-5">
+              <Skeleton className="h-5 w-2/3" />
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-1/2" />
+              <Skeleton className="mt-5 h-9 w-28" />
+            </div>
+          ))}
+        </div>
+      </section>
+    );
 
   async function mutate(url: string, method: string, body?: unknown) {
     if (busy) return false;

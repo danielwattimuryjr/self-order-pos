@@ -2,8 +2,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export default function SettingsLoading() {
   return (
-    <main aria-busy="true" aria-label="Memuat pengaturan restoran" className="space-y-5">
-      <span role="status" className="sr-only">Memuat pengaturan restoran…</span>
+    <main
+      aria-busy="true"
+      aria-label="Memuat pengaturan restoran"
+      className="space-y-5"
+    >
+      <span role="status" className="sr-only">
+        Memuat pengaturan restoran…
+      </span>
       <Skeleton aria-hidden="true" className="h-8 w-64" />
       <div aria-hidden="true" className="grid max-w-4xl gap-6 lg:grid-cols-2">
         {[0, 1].map((card) => (

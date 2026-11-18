@@ -6,7 +6,9 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("server-only", () => ({}));
-vi.mock("@/lib/supabase/service", () => ({ createServiceClient: mocks.createServiceClient }));
+vi.mock("@/lib/supabase/service", () => ({
+  createServiceClient: mocks.createServiceClient,
+}));
 
 import { checkCatalogRateLimit } from "./catalog-rate-limit";
 import { checkPublicOrderRateLimit } from "./public-order-rate-limit";
@@ -16,7 +18,10 @@ const tableCode = "46d77d6c-32b0-4dd2-b6e0-020001317344";
 describe("public endpoint rate limits", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.rpc.mockResolvedValue({ data: [{ allowed: true, retry_after_seconds: 60 }], error: null });
+    mocks.rpc.mockResolvedValue({
+      data: [{ allowed: true, retry_after_seconds: 60 }],
+      error: null,
+    });
     mocks.createServiceClient.mockReturnValue({ rpc: mocks.rpc });
   });
 
@@ -36,20 +41,36 @@ describe("public endpoint rate limits", () => {
   });
 
   it("fails closed with 429 and Retry-After when the order limit is exceeded", async () => {
-    mocks.rpc.mockResolvedValueOnce({ data: [{ allowed: false, retry_after_seconds: 17 }], error: null });
-    const response = await checkPublicOrderRateLimit(new Request("http://localhost"), tableCode);
+    mocks.rpc.mockResolvedValueOnce({
+      data: [{ allowed: false, retry_after_seconds: 17 }],
+      error: null,
+    });
+    const response = await checkPublicOrderRateLimit(
+      new Request("http://localhost"),
+      tableCode,
+    );
 
     expect(response?.status).toBe(429);
     expect(response?.headers.get("Retry-After")).toBe("17");
-    await expect(response?.json()).resolves.toMatchObject({ error: { code: "RATE_LIMITED" } });
+    await expect(response?.json()).resolves.toMatchObject({
+      error: { code: "RATE_LIMITED" },
+    });
     expect(mocks.rpc).toHaveBeenCalledTimes(1);
   });
 
   it("fails closed with 503 when the database rate limiter is unavailable", async () => {
-    mocks.rpc.mockResolvedValueOnce({ data: null, error: { message: "unavailable" } });
-    const response = await checkCatalogRateLimit(new Request("http://localhost"), tableCode);
+    mocks.rpc.mockResolvedValueOnce({
+      data: null,
+      error: { message: "unavailable" },
+    });
+    const response = await checkCatalogRateLimit(
+      new Request("http://localhost"),
+      tableCode,
+    );
 
     expect(response?.status).toBe(503);
-    await expect(response?.json()).resolves.toMatchObject({ error: { code: "RATE_LIMIT_UNAVAILABLE" } });
+    await expect(response?.json()).resolves.toMatchObject({
+      error: { code: "RATE_LIMIT_UNAVAILABLE" },
+    });
   });
 });

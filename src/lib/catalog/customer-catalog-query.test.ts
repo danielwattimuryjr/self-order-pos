@@ -19,16 +19,33 @@ describe("customer catalog query validation", () => {
   });
 
   it("trims search whitespace and accepts category and page parameters", () => {
-    const parsed = parseCustomerCatalogQuery(new URLSearchParams(`search=%20%20Nasi%20%20&category=${categoryId}&page=3`));
+    const parsed = parseCustomerCatalogQuery(
+      new URLSearchParams(
+        `search=%20%20Nasi%20%20&category=${categoryId}&page=3`,
+      ),
+    );
     expect(parsed.success).toBe(true);
-    if (parsed.success) expect(parsed.data).toEqual({ search: "Nasi", category: categoryId, page: 3, retainMenuId: [] });
+    if (parsed.success)
+      expect(parsed.data).toEqual({
+        search: "Nasi",
+        category: categoryId,
+        page: 3,
+        retainMenuId: [],
+      });
   });
 
   it("rejects malformed filters, repeated scalar parameters, and excessive retained IDs", () => {
-    expect(parseCustomerCatalogQuery(new URLSearchParams("category=not-a-uuid")).success).toBe(false);
-    expect(parseCustomerCatalogQuery(new URLSearchParams("page=1&page=2")).success).toBe(false);
-    const ids = Array.from({ length: CUSTOMER_CATALOG_MAX_RETAINED_MENU_IDS + 1 }, (_, index) =>
-      `00000000-0000-4000-8000-${index.toString().padStart(12, "0")}`,
+    expect(
+      parseCustomerCatalogQuery(new URLSearchParams("category=not-a-uuid"))
+        .success,
+    ).toBe(false);
+    expect(
+      parseCustomerCatalogQuery(new URLSearchParams("page=1&page=2")).success,
+    ).toBe(false);
+    const ids = Array.from(
+      { length: CUSTOMER_CATALOG_MAX_RETAINED_MENU_IDS + 1 },
+      (_, index) =>
+        `00000000-0000-4000-8000-${index.toString().padStart(12, "0")}`,
     );
     const params = new URLSearchParams();
     ids.forEach((id) => params.append("retainMenuId", id));

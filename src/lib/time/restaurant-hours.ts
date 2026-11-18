@@ -16,8 +16,12 @@ const TIME_ZONE = "Asia/Jakarta";
 function localParts(date: Date) {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: TIME_ZONE,
-    year: "numeric", month: "2-digit", day: "2-digit",
-    hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
   }).formatToParts(date);
   return Object.fromEntries(parts.map(({ type, value }) => [type, value]));
 }
@@ -34,8 +38,12 @@ function openingInstant(date: string, openingTime: string) {
   return new Date(Date.UTC(year, month - 1, day, hour - 7, minute)).getTime();
 }
 
-export function getRestaurantOperatingStatus(settings: RestaurantHours, now = new Date()): RestaurantOperatingStatus {
-  if (!settings.opening_time || !settings.closing_time) return { status: "NOT_CONFIGURED" };
+export function getRestaurantOperatingStatus(
+  settings: RestaurantHours,
+  now = new Date(),
+): RestaurantOperatingStatus {
+  if (!settings.opening_time || !settings.closing_time)
+    return { status: "NOT_CONFIGURED" };
 
   const parts = localParts(now);
   const date = `${parts.year}-${parts.month}-${parts.day}`;
@@ -50,8 +58,12 @@ export function getRestaurantOperatingStatus(settings: RestaurantHours, now = ne
     : nowMinutes >= openMinutes && nowMinutes < closeMinutes;
 
   if (settings.temporary_closed && settings.temporary_closed_at) {
-    const lastOpeningDate = nowMinutes >= openMinutes ? date : previousDate(date);
-    if (new Date(settings.temporary_closed_at).getTime() >= openingInstant(lastOpeningDate, settings.opening_time)) {
+    const lastOpeningDate =
+      nowMinutes >= openMinutes ? date : previousDate(date);
+    if (
+      new Date(settings.temporary_closed_at).getTime() >=
+      openingInstant(lastOpeningDate, settings.opening_time)
+    ) {
       return { status: "TEMPORARILY_CLOSED" };
     }
   } else if (settings.temporary_closed) {
@@ -59,11 +71,16 @@ export function getRestaurantOperatingStatus(settings: RestaurantHours, now = ne
   }
 
   if (isOpen) return { status: "OPEN" };
-  const nextDate = nowMinutes < openMinutes ? date : (() => {
-    const [year, month, day] = date.split("-").map(Number);
-    const tomorrow = new Date(Date.UTC(year, month - 1, day + 1));
-    return `${tomorrow.getUTCFullYear()}-${String(tomorrow.getUTCMonth() + 1).padStart(2, "0")}-${String(tomorrow.getUTCDate()).padStart(2, "0")}`;
-  })();
-  const iso = new Date(openingInstant(nextDate, settings.opening_time)).toISOString();
+  const nextDate =
+    nowMinutes < openMinutes
+      ? date
+      : (() => {
+          const [year, month, day] = date.split("-").map(Number);
+          const tomorrow = new Date(Date.UTC(year, month - 1, day + 1));
+          return `${tomorrow.getUTCFullYear()}-${String(tomorrow.getUTCMonth() + 1).padStart(2, "0")}-${String(tomorrow.getUTCDate()).padStart(2, "0")}`;
+        })();
+  const iso = new Date(
+    openingInstant(nextDate, settings.opening_time),
+  ).toISOString();
   return { status: "OUTSIDE_HOURS", nextOpeningAt: iso };
 }

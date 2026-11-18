@@ -8,7 +8,9 @@ export function verifyMidtransSignature(input: {
   signature: string;
 }) {
   const expected = createHash("sha512")
-    .update(`${input.orderId}${input.statusCode}${input.grossAmount}${input.signatureSecretKey}`)
+    .update(
+      `${input.orderId}${input.statusCode}${input.grossAmount}${input.signatureSecretKey}`,
+    )
     .digest();
   const actual = Buffer.from(input.signature, "hex");
   return actual.length === expected.length && timingSafeEqual(actual, expected);

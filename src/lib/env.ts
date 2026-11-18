@@ -14,7 +14,9 @@ export function getPublicEnv() {
     NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
   });
   if (!result.success) {
-    throw new Error(`Invalid public environment configuration: ${z.prettifyError(result.error)}`);
+    throw new Error(
+      `Invalid public environment configuration: ${z.prettifyError(result.error)}`,
+    );
   }
   return result.data;
 }
