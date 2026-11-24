@@ -32,6 +32,7 @@ import { toast } from "sonner";
 import type { MenuConfiguration } from "@/lib/catalog/built-in-templates";
 import { priceForMenuChoice, type MenuChoice } from "@/lib/catalog/price";
 import { createClient } from "@/lib/supabase/client";
+import { cn } from "@/lib/utils";
 
 type Menu = {
   id: string;
@@ -935,18 +936,22 @@ export function CustomerOrdering({
     setQuantity(1);
   }
 
-  function addToCart() {
-    if (!selectedMenu || !isOpen || !catalog) return;
+  function addToCart(
+    menu: Menu,
+    choice: MenuChoice,
+    rawNote: string,
+    addQuantity: number,
+  ) {
+    if (!isOpen || !catalog) return false;
     const currentMenu = [
       ...catalog.categories.flatMap((category) => category.menus),
       ...catalog.retainedMenus,
-    ].find((menu) => menu.id === selectedMenu.id);
+    ].find((item) => item.id === menu.id);
     if (!currentMenu) {
       setNotice("Menu sudah tidak tersedia. Periksa katalog yang diperbarui.");
       setSelectedMenu(null);
-      return;
+      return false;
     }
-    const choice: MenuChoice = { variantSelections, addonSelections };
     const priced = priceForMenuChoice(
       currentMenu.price,
       currentMenu.configuration,
@@ -954,17 +959,11 @@ export function CustomerOrdering({
     );
     if (!priced.valid) {
       setNotice(priced.reason);
-      return;
+      return false;
     }
+    const note = rawNote.trim();
     const choiceLabels = choiceLabelsForMenu(currentMenu, choice);
-    const signature = JSON.stringify([
-      currentMenu.id,
-      itemNote.trim(),
-      Object.entries(variantSelections).sort(),
-      Object.entries(addonSelections)
-        .map(([group, values]) => [group, Object.entries(values).sort()])
-        .sort(),
-    ]);
+    const signature = lineKey(currentMenu.id, note, choice);
     setCart((current) => {
       const found = current.lines.find((line) => line.key === signature);
       if (found)
@@ -972,7 +971,10 @@ export function CustomerOrdering({
           ...current,
           lines: current.lines.map((line) =>
             line.key === signature
-              ? { ...line, quantity: Math.min(99, line.quantity + quantity) }
+              ? {
+                  ...line,
+                  quantity: Math.min(99, line.quantity + addQuantity),
+                }
               : line,
           ),
         };
@@ -985,8 +987,8 @@ export function CustomerOrdering({
             key: signature,
             menuId: currentMenu.id,
             menuName: currentMenu.name,
-            quantity,
-            note: itemNote.trim(),
+            quantity: addQuantity,
+            note,
             unitPrice: priced.unitPrice,
             needsAcceptance: false,
             unavailable: null,
@@ -996,11 +998,8 @@ export function CustomerOrdering({
         ],
       };
     });
-    setSelectedMenu(null);
-    setPanelStep("cart");
-    setShowCart(true);
     setNotice("");
-    toast.success(`${currentMenu.name} ditambahkan ke keranjang.`);
+    return true;
   }
 
   function removeLine(key: string) {
@@ -1090,18 +1089,19 @@ export function CustomerOrdering({
         </div>
         <div
           aria-hidden="true"
-          className="mx-auto grid max-w-5xl grid-cols-2 gap-3 px-4 py-5 md:grid-cols-3 lg:grid-cols-4"
+          className="mx-auto grid max-w-5xl gap-3 px-4 py-5 md:grid-cols-2"
         >
           {Array.from({ length: 4 }, (_, index) => (
             <div
               key={index}
-              className="overflow-hidden rounded-xl border bg-card"
+              className="flex gap-3 rounded-xl border bg-card p-3"
             >
-              <Skeleton className="aspect-square w-full rounded-none" />
-              <div className="space-y-2 p-3">
+              <div className="flex-1 space-y-2">
                 <Skeleton className="h-4 w-4/5" />
+                <Skeleton className="h-3 w-3/5" />
                 <Skeleton className="h-4 w-2/5" />
               </div>
+              <Skeleton className="size-24 shrink-0 rounded-lg md:size-28" />
             </div>
           ))}
         </div>
@@ -1319,7 +1319,14 @@ export function CustomerOrdering({
           ))}
         </nav>
       </div>
-      <div className="mx-auto max-w-5xl px-4 py-5" aria-busy={loadingResults}>
+      <div
+        aria-busy={loadingResults}
+        inert={loadingResults}
+        className={cn(
+          "mx-auto max-w-5xl px-4 py-5 transition-opacity motion-reduce:transition-none",
+          loadingResults && "opacity-60",
+        )}
+      >
         {catalogQueryError ? (
           <Card>
             <CardContent className="space-y-3 p-8 text-center">
@@ -1366,46 +1373,133 @@ export function CustomerOrdering({
               <h2 className="mb-3 text-section-title font-semibold">
                 {category.name}
               </h2>
-              <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
-                {category.menus.map((menu) => (
-                  <Button
-                    variant="ghost"
-                    disabled={!isOpen}
-                    key={menu.id}
-                    onClick={() => openMenu(menu)}
-                    className="h-auto min-w-0 flex-col items-stretch overflow-hidden rounded-xl border bg-card p-0 text-left whitespace-normal shadow-none transition hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-70"
-                  >
-                    {menu.imageUrl ? (
-                      <Image
-                        src={menu.imageUrl}
-                        alt=""
-                        width={500}
-                        height={500}
-                        unoptimized
-                        className="aspect-square w-full object-cover"
-                      />
-                    ) : (
-                      <div className="grid aspect-square place-items-center bg-secondary text-4xl text-muted-foreground">
-                        🍽
-                      </div>
-                    )}
-                    <div className="p-3">
-                      <h3 className="line-clamp-2 min-h-10 text-sm font-medium">
-                        {menu.name}
-                      </h3>
-                      <p className="mt-1 text-sm font-semibold">
-                        {money(menu.price)}
-                      </p>
-                      {menu.configuration.variants.length +
-                        menu.configuration.addons.length >
-                        0 && (
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          Dapat disesuaikan
+              <div className="grid gap-3 md:grid-cols-2">
+                {category.menus.map((menu) => {
+                  const customizable =
+                    menu.configuration.variants.length +
+                      menu.configuration.addons.length >
+                    0;
+                  const lines = cart.lines.filter(
+                    (line) => line.menuId === menu.id,
+                  );
+                  const inCart = lines.reduce(
+                    (sum, line) => sum + line.quantity,
+                    0,
+                  );
+                  const plainKey = lineKey(menu.id, "", noChoice);
+                  // The card stepper may only drive a single plain line; noted/configured lines are edited in the cart.
+                  const stepperLine =
+                    !customizable &&
+                    lines.every((line) => line.key === plainKey)
+                      ? lines[0]
+                      : undefined;
+                  return (
+                    <div
+                      key={menu.id}
+                      className="relative flex gap-3 rounded-xl border bg-card p-3 transition-shadow hover:shadow-sm"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <h3 className="font-medium">
+                          <button
+                            type="button"
+                            disabled={!isOpen}
+                            onClick={() => openMenu(menu)}
+                            className="line-clamp-2 text-left outline-none after:absolute after:inset-0 after:rounded-xl focus-visible:after:ring-[3px] focus-visible:after:ring-ring/50 disabled:cursor-not-allowed"
+                          >
+                            {menu.name}
+                          </button>
+                        </h3>
+                        {menu.description && (
+                          <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
+                            {menu.description}
+                          </p>
+                        )}
+                        <p className="mt-2 text-sm font-semibold tabular-nums">
+                          {money(menu.price)}
                         </p>
-                      )}
+                        {customizable && (
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Dapat disesuaikan
+                          </p>
+                        )}
+                        {inCart > 0 && !stepperLine && (
+                          <p className="mt-1 text-xs font-medium text-primary">
+                            {inCart} di keranjang
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex w-24 shrink-0 flex-col items-center md:w-28">
+                        {menu.imageUrl ? (
+                          <Image
+                            src={menu.imageUrl}
+                            alt=""
+                            width={224}
+                            height={224}
+                            unoptimized
+                            className="aspect-square w-full rounded-lg object-cover"
+                          />
+                        ) : (
+                          <div
+                            aria-hidden="true"
+                            className="grid aspect-square w-full place-items-center rounded-lg bg-secondary text-3xl text-muted-foreground"
+                          >
+                            🍽
+                          </div>
+                        )}
+                        <div className="relative z-10 -mt-5">
+                          {stepperLine ? (
+                            <div className="flex items-center rounded-full border bg-background shadow-sm">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon-sm"
+                                className="rounded-full"
+                                aria-label={`Kurangi jumlah ${menu.name}`}
+                                disabled={!isOpen}
+                                onClick={() => adjustLine(stepperLine, -1)}
+                              >
+                                −
+                              </Button>
+                              <span
+                                className="min-w-5 text-center text-sm font-medium tabular-nums"
+                                aria-live="polite"
+                              >
+                                {stepperLine.quantity}
+                              </span>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon-sm"
+                                className="rounded-full"
+                                aria-label={`Tambah jumlah ${menu.name}`}
+                                disabled={!isOpen || stepperLine.quantity >= 99}
+                                onClick={() => adjustLine(stepperLine, 1)}
+                              >
+                                +
+                              </Button>
+                            </div>
+                          ) : (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="rounded-full border-primary px-5 text-primary shadow-sm hover:text-primary"
+                              aria-label={`Tambah ${menu.name}`}
+                              disabled={!isOpen}
+                              onClick={() =>
+                                customizable || lines.length
+                                  ? openMenu(menu)
+                                  : addToCart(menu, noChoice, "", 1)
+                              }
+                            >
+                              Tambah
+                            </Button>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  </Button>
-                ))}
+                  );
+                })}
               </div>
             </section>
           ))
@@ -1701,7 +1795,21 @@ export function CustomerOrdering({
               )}
               <Button
                 disabled={!isOpen || !selectedMenuPricing?.valid}
-                onClick={addToCart}
+                onClick={() => {
+                  if (
+                    addToCart(
+                      selectedMenu,
+                      { variantSelections, addonSelections },
+                      itemNote,
+                      quantity,
+                    )
+                  ) {
+                    setSelectedMenu(null);
+                    toast.success(
+                      `${selectedMenu.name} ditambahkan ke keranjang.`,
+                    );
+                  }
+                }}
                 className="w-full"
               >
                 Tambah ke keranjang
@@ -2444,6 +2552,19 @@ export function CustomerOrdering({
       </AlertDialog>
     </main>
   );
+}
+
+const noChoice: MenuChoice = { variantSelections: {}, addonSelections: {} };
+
+function lineKey(menuId: string, note: string, choice: MenuChoice) {
+  return JSON.stringify([
+    menuId,
+    note,
+    Object.entries(choice.variantSelections).sort(),
+    Object.entries(choice.addonSelections)
+      .map(([group, values]) => [group, Object.entries(values).sort()])
+      .sort(),
+  ]);
 }
 
 function choiceLabelsForMenu(menu: Menu, choice: MenuChoice) {

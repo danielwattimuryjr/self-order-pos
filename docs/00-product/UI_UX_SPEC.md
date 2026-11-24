@@ -12,7 +12,10 @@
 
 ### `/order/[tableCode]`
 - Resolve table and session server-side.
-- Catalog categories horizontal scroll; menus 2-column mobile grid.
+- Catalog categories horizontal scroll; menus as horizontal cards (name, description, price on the left; 1:1 image or placeholder on the right), one column on mobile and two columns from tablet/desktop width.
+- Menus without variants/add-ons are added directly from the card with `Tambah`; the button then becomes a `− qty +` stepper for that cart line. Decrementing from 1 to 0 asks confirmation.
+- Menus with variants/add-ons (or already in the cart with a note) open the menu selection sheet from `Tambah`; the card shows the quantity already in the cart. Tapping the card body always opens the sheet.
+- While category/search/page results load, the menu list is dimmed and non-interactive.
 - Sticky cart button.
 - Closed state: catalog visible, add-to-cart disabled; show temporary close reason or next opening time.
 
@@ -21,7 +24,7 @@
 - Variant group single-select; required indicator.
 - Add-on group multi-select with min/max and per-option quantity.
 - Quantity and optional note.
-- Add button shows calculated line total.
+- Add button shows calculated line total; adding closes the sheet and returns to the catalog without opening the cart.
 
 ### Cart
 - Item rows with chosen variants/add-ons, notes, quantity controls.

@@ -117,24 +117,30 @@ test("pelanggan mencari menu, menambahkan ke keranjang, dan membuat order dengan
     })
     .fill("Nasi");
   await expect(
-    page.getByRole("button", { name: /Nasi Goreng E2E/ }),
+    page.getByRole("button", { name: "Nasi Goreng E2E", exact: true }),
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: /Mie Goreng E2E/ }),
   ).toHaveCount(0);
 
-  await page.getByRole("button", { name: /Nasi Goreng E2E/ }).click();
-  await page.getByRole("button", { name: "Tambah ke keranjang" }).click();
+  await page.getByRole("button", { name: "Tambah Nasi Goreng E2E" }).click();
+  await page
+    .getByRole("button", { name: "Tambah jumlah Nasi Goreng E2E" })
+    .click();
+  await expect(page.getByRole("dialog", { name: "Keranjang" })).toHaveCount(0);
+  await page.getByRole("button", { name: /Keranjang.*2 item/ }).click();
   await expect(page.getByRole("dialog", { name: "Keranjang" })).toBeVisible();
+  await page.getByRole("button", { name: /Lanjut ke checkout/ }).click();
   await page.getByRole("button", { name: "Buat pesanan" }).click();
 
-  await expect(page.getByText("Pembayaran · ORD-E2E-0001")).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Pembayaran" })).toBeVisible();
+  await expect(page.getByText("ORD-E2E-0001 · Meja 07")).toBeVisible();
   await expect(
     page.getByRole("img", { name: "Kode QRIS untuk pembayaran" }),
   ).toBeVisible();
   expect(checkoutBody).toBeDefined();
   expect(checkoutBody?.receiptEmail).toBeNull();
-  expect(checkoutBody?.items).toMatchObject([{ menuId: nasiId, quantity: 1 }]);
+  expect(checkoutBody?.items).toMatchObject([{ menuId: nasiId, quantity: 2 }]);
 });
 
 test("pesan pencarian tidak menemukan menu yang tidak cocok", async ({
@@ -151,5 +157,63 @@ test("pesan pencarian tidak menemukan menu yang tidak cocok", async ({
     page.getByText(
       "Tidak ada menu yang cocok dengan pencarian atau filter Anda.",
     ),
+  ).toBeVisible();
+});
+
+test("stepper kartu menu meminta konfirmasi sebelum menghapus item", async ({
+  page,
+}) => {
+  await mockCustomerApis(page);
+  await page.goto(`/order/${tableCode}`);
+  await page.getByRole("button", { name: "Tambah Mie Goreng E2E" }).click();
+  await expect(
+    page.getByRole("button", { name: /Keranjang.*1 item/ }),
+  ).toBeVisible();
+
+  await page
+    .getByRole("button", { name: "Kurangi jumlah Mie Goreng E2E" })
+    .click();
+  await expect(page.getByRole("alertdialog")).toBeVisible();
+  await page.getByRole("button", { name: "Hapus item" }).click();
+
+  await expect(
+    page.getByRole("button", { name: "Tambah Mie Goreng E2E" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: /Pesanan.*Pilih menu/ }),
+  ).toBeVisible();
+});
+
+test("daftar menu tidak dapat dipakai saat hasil kategori dimuat", async ({
+  page,
+}) => {
+  await mockCustomerApis(page);
+  await page.goto(`/order/${tableCode}`);
+  await expect(
+    page.getByRole("button", { name: "Tambah Nasi Goreng E2E" }),
+  ).toBeVisible();
+
+  let releaseCatalog = () => {};
+  const catalogGate = new Promise<void>((resolve) => {
+    releaseCatalog = resolve;
+  });
+  await page.route("**/api/v1/tables/*/catalog**", async (route) => {
+    await catalogGate;
+    await route.fulfill({ json: catalogPayload() });
+  });
+  await page.getByRole("button", { name: "Menu E2E", exact: true }).click();
+
+  await expect(page.locator("[inert]")).toHaveCount(1);
+  await page
+    .locator('button[aria-label="Tambah Nasi Goreng E2E"]')
+    .click({ force: true });
+  await expect(
+    page.getByRole("button", { name: /Pesanan.*Pilih menu/ }),
+  ).toBeVisible();
+
+  releaseCatalog();
+  await expect(page.locator("[inert]")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Tambah Nasi Goreng E2E" }),
   ).toBeVisible();
 });

@@ -2,7 +2,7 @@
 
 ## 1. Customer flow
 
-`Scan QR → Resolve table/session → Catalog → Menu detail sheet → Cart → Checkout validation → Create order → QRIS payment → Confirmation/receipt`
+`Scan QR → Resolve table/session → Catalog (add directly or via Menu detail sheet) → Cart → Checkout validation → Create order → QRIS payment → Confirmation/receipt`
 
 ### Scan QR and session
 - Resolve stable table ID from permanent QR.
@@ -12,7 +12,9 @@
 
 ### Catalog
 - Horizontal scroll category tabs.
-- Mobile menu grid two columns.
+- Menu list of horizontal cards; one column on mobile, two on desktop.
+- Menus without variants/add-ons are added and their quantity adjusted directly on the card; customizable menus open the menu detail sheet.
+- The menu list cannot be used while new category/search results load.
 - Sticky cart CTA at bottom.
 - Category/menu order follows Admin `sort_order`.
 - Realtime updates menu, price, availability, and restaurant status.
@@ -27,7 +29,7 @@
 - Local per device and tied to table + session.
 - Persist in localStorage; clear after successful checkout.
 - Manual remove/empty cart with confirmation.
-- Decrementing quantity from 1 to 0 asks confirmation.
+- Decrementing quantity from 1 to 0 asks confirmation, in the cart and on the catalog card stepper.
 - Voucher entry/removal and recalculated total.
 - Price change requires explicit acceptance; unavailable items must be removed.
 

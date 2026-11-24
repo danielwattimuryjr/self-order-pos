@@ -89,7 +89,7 @@ The customer interface must prioritize the ordering journey rather than resemble
 **Menu Exploration**
 
 - Category navigation using horizontal chips or tabs.
-- Food items displayed in responsive grids.
+- Food items displayed as horizontal menu cards in a responsive list.
 - Large and attractive food images.
 - Menu name and price.
 - Short description when available.
