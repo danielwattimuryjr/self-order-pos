@@ -44,24 +44,62 @@ type NavigationLink = {
   disabled?: boolean;
 };
 
-const adminLinks: NavigationLink[] = [
-  { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/admin/tables", label: "Meja", icon: Table2 },
-  { href: "/admin/settings", label: "Jam Operasional", icon: Clock3 },
-  { href: "/admin/catalog", label: "Kategori & Menu", icon: UtensilsCrossed },
-  { href: "/admin/templates", label: "Template Menu", icon: SlidersHorizontal },
-  { href: "/admin/vouchers", label: "Voucher", icon: TicketPercent },
-  { href: "/admin/orders", label: "Pesanan", icon: ShoppingBag },
-  { href: "/admin/transactions", label: "Transaksi", icon: ReceiptText },
-  { href: "/admin/staff", label: "Staf", icon: UsersRound },
-  { href: "/admin/audit-logs", label: "Audit Log", icon: ScrollText },
+type NavigationGroup = { label: string; links: NavigationLink[] };
+
+const adminNavigation: NavigationGroup[] = [
+  {
+    label: "Ringkasan",
+    links: [
+      { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
+    ],
+  },
+  {
+    label: "Penjualan",
+    links: [
+      { href: "/admin/orders", label: "Pesanan", icon: ShoppingBag },
+      { href: "/admin/transactions", label: "Transaksi", icon: ReceiptText },
+    ],
+  },
+  {
+    label: "Data Master",
+    links: [
+      { href: "/admin/tables", label: "Meja", icon: Table2 },
+      {
+        href: "/admin/catalog",
+        label: "Kategori & Menu",
+        icon: UtensilsCrossed,
+      },
+      {
+        href: "/admin/templates",
+        label: "Template Menu",
+        icon: SlidersHorizontal,
+      },
+    ],
+  },
+  {
+    label: "Promosi",
+    links: [{ href: "/admin/vouchers", label: "Voucher", icon: TicketPercent }],
+  },
+  {
+    label: "Pengaturan",
+    links: [
+      { href: "/admin/settings", label: "Jam Operasional", icon: Clock3 },
+      { href: "/admin/staff", label: "Staf", icon: UsersRound },
+      { href: "/admin/audit-logs", label: "Audit Log", icon: ScrollText },
+    ],
+  },
 ];
 
-const staffLinks: NavigationLink[] = [
-  { href: "/staff/queue", label: "Antrean Pesanan", icon: ClipboardList },
-  { href: "/staff/history", label: "Riwayat Pesanan", icon: History },
-  { href: "/staff/transactions", label: "Transaksi", icon: ReceiptText },
-  { href: "/staff/profile", label: "Profil Akun", icon: UserRound },
+const staffNavigation: NavigationGroup[] = [
+  {
+    label: "Operasional",
+    links: [
+      { href: "/staff/queue", label: "Antrean Pesanan", icon: ClipboardList },
+      { href: "/staff/history", label: "Riwayat Pesanan", icon: History },
+      { href: "/staff/transactions", label: "Transaksi", icon: ReceiptText },
+      { href: "/staff/profile", label: "Profil Akun", icon: UserRound },
+    ],
+  },
 ];
 
 export function ManagementShell({
@@ -76,7 +114,7 @@ export function ManagementShell({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const links = role === "ADMIN" ? adminLinks : staffLinks;
+  const navigation = role === "ADMIN" ? adminNavigation : staffNavigation;
 
   return (
     <SidebarProvider>
@@ -93,40 +131,40 @@ export function ManagementShell({
           </p>
         </SidebarHeader>
         <SidebarContent>
-          <SidebarGroup>
-            <SidebarGroupLabel>
-              {role === "ADMIN" ? "Manajemen" : "Operasional"}
-            </SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {links.map(({ href, label, icon: Icon, disabled }) => (
-                  <SidebarMenuItem key={href}>
-                    <SidebarMenuButton
-                      asChild={!disabled}
-                      isActive={
-                        !disabled &&
-                        (pathname === href || pathname.startsWith(`${href}/`))
-                      }
-                      disabled={disabled}
-                      tooltip={label}
-                    >
-                      {disabled ? (
-                        <>
-                          <Icon />
-                          <span>{label}</span>
-                        </>
-                      ) : (
-                        <Link href={href}>
-                          <Icon />
-                          <span>{label}</span>
-                        </Link>
-                      )}
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
+          {navigation.map((group) => (
+            <SidebarGroup key={group.label}>
+              <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {group.links.map(({ href, label, icon: Icon, disabled }) => (
+                    <SidebarMenuItem key={href}>
+                      <SidebarMenuButton
+                        asChild={!disabled}
+                        isActive={
+                          !disabled &&
+                          (pathname === href || pathname.startsWith(`${href}/`))
+                        }
+                        disabled={disabled}
+                        tooltip={label}
+                      >
+                        {disabled ? (
+                          <>
+                            <Icon />
+                            <span>{label}</span>
+                          </>
+                        ) : (
+                          <Link href={href}>
+                            <Icon />
+                            <span>{label}</span>
+                          </Link>
+                        )}
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  ))}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          ))}
         </SidebarContent>
         <SidebarFooter>
           <SidebarMenu>

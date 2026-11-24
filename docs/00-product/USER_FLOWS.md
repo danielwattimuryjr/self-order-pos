@@ -50,7 +50,7 @@
 ## 2. Admin flow
 
 - Login → Sales Dashboard.
-- Sidebar: Dashboard, Pesanan, Menu, Voucher, Meja, Transaksi, Staf, Audit Log.
+- Sidebar grouped: Ringkasan (Dashboard), Penjualan (Pesanan, Transaksi), Data Master (Meja, Kategori & Menu, Template Menu), Promosi (Voucher), Pengaturan (Jam Operasional, Staf, Audit Log).
 - Meja: tambah, ubah nomor, aktif/nonaktif, dan unduh QR individual atau PDF semua meja. QR memakai UUIDv4 stabil.
 - Pengaturan restoran: satu jadwal buka/tutup harian, tutup sementara dengan alasan, dan reopen dengan konfirmasi.
 - Menu detail includes variant/add-on editor and template tools.
